@@ -1,0 +1,23 @@
+{
+  "dataset": "Open English Wordnet",
+  "version": "2025-edition",
+  "language": "en",
+  "sourceURL": "https://en-word.net/static/english-wordnet-2025-json.zip",
+  "releaseURL": "https://github.com/globalwordnet/english-wordnet/releases/tag/2025-edition",
+  "archiveSHA256": "7d749f6e2c39e6970e4997839dcf6e42fd281f3c2fae0171d2192bae8cfa4b51",
+  "resourceSHA256": "91b91b054cd9e7ae5111858c424f285f9353ad4249f0d9f5fc8241ca1d72085b",
+  "resourceBytes": 5894971,
+  "uncompressedBytes": 20874100,
+  "lemmas": 128009,
+  "lexicalSenses": 185129,
+  "synsets": 107519,
+  "recordedForms": 4411,
+  "license": "CC BY 4.0; underlying Princeton WordNet notices retained",
+  "licenseURLs": [
+    "https://raw.githubusercontent.com/globalwordnet/english-wordnet/2025-edition/LICENSE.md",
+    "https://raw.githubusercontent.com/globalwordnet/english-wordnet/2025-edition/WNDB_License.txt"
+  ],
+  "licenseFormatting": "Trailing whitespace trimmed; license wording retained.",
+  "changes": "Compact English reference extract: lexical sense IDs, synset IDs, POS, all definitions and examples. Recorded forms retain their exact lemma/sense associations. Relations and pronunciation omitted. Examples retain text; source annotations omitted. Sense IDs sorted lexically, not ranked by contextual relevance. Regular inflection candidates are generated separately by application code, not claimed as OEWN-recorded forms.",
+  "checksumNote": "Locally calculated hashes, not official publisher signatures."
+}

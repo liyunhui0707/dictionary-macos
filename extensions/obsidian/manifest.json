@@ -1,0 +1,9 @@
+{
+    "id": "dictionary-lookup",
+    "name": "Dictionary Lookup",
+    "version": "0.1.0",
+    "minAppVersion": "1.11.4",
+    "description": "Translate the selected word in context using the local Dictionary macOS app.",
+    "author": "liyunhui",
+    "isDesktopOnly": true
+}

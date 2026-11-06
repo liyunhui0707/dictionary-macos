@@ -1,0 +1,15 @@
+name: Checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift tests
+        run: swift test
+      - name: Integration and packaging tests
+        run: node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs
+      - name: Release compile
+        run: swift build -c release

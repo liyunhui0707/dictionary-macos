@@ -1,0 +1,27 @@
+.DS_Store
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+*.xcodeproj
+.vscode/
+.idea/
+build/
+extensions/chromium/dist/
+*.crx
+*.pem
+.workflow/
+
+# Local credentials are never QA build inputs.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+secrets/
+
+# Private handoff and local evidence
+.local/
+*.p12
+*.pfx
+*.key

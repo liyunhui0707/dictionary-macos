@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Dictionary Lookup — Options</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 480px;
+            margin: 20px;
+            color: #222;
+        }
+        h1 { font-size: 16px; margin: 0 0 6px; }
+        p { font-size: 13px; color: #555; margin: 4px 0 12px; line-height: 1.4; }
+        input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .row { display: flex; gap: 8px; margin-top: 8px; }
+        button {
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+        .ok { color: #2a8e2a; }
+        .err { color: #c00; }
+        .hint { font-size: 11px; color: #888; margin-top: 16px; }
+        kbd {
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 11px;
+            background: #eee;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dictionary Lookup</h1>
+    <p>Paste the token from the Dictionary macOS app
+       (menu bar 📖 → "Copy extension token").</p>
+    <input type="text" id="token" placeholder="paste token here" autocomplete="off">
+    <div class="row">
+        <button id="verify">Verify &amp; save</button>
+        <button id="clear">Clear</button>
+    </div>
+    <div id="status"></div>
+    <p class="hint">
+        Default hotkey: <kbd>⌥D</kbd> (Alt+D). The Mac app's global ⌥D
+        is suppressed automatically while a Chromium browser is focused,
+        so a single shortcut works everywhere. Remap at
+        <code>chrome://extensions/shortcuts</code> if it conflicts.
+    </p>
+    <script src="options.js"></script>
+</body>
+</html>
