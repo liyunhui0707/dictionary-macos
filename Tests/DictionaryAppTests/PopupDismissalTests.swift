@@ -12,7 +12,8 @@ struct PopupDismissalTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_AIR_POPUP_SMOKE"] == "1"))
     func airPopupVisibilitySmoke() async throws {
         let expectedHost = try #require(ProcessInfo.processInfo.environment["DICTIONARY_POPUP_TEST_HOST"])
-        try #require(ProcessInfo.processInfo.hostName.split(separator: ".").first == expectedHost)
+        let actualHost = try #require(ProcessInfo.processInfo.hostName.split(separator: ".").first)
+        try #require(String(actualHost) == expectedHost)
         let output = try #require(ProcessInfo.processInfo.environment["DICTIONARY_AIR_POPUP_OUTPUT"])
         try #require(output.range(of: #"^/private/tmp/dictionary-popup-air\.[A-Za-z0-9]+/evidence$"#,
                                   options: .regularExpression) != nil)
