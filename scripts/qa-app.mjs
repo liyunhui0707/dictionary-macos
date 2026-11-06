@@ -8,7 +8,7 @@ import {spawnSync, spawn} from 'node:child_process';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const roots = ['Sources', 'Tests', 'scripts', 'docs', 'extensions', '.github', 'website'];
-const topFiles = ['Package.swift', 'README.md', '.gitignore', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md'];
+const topFiles = ['Package.swift', 'README.md', '.gitignore', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md', 'AGENTS.md'];
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const json = (file, value) => fs.writeFileSync(file, JSON.stringify(value,null,2)+'\n', {flag:'wx',mode:0o600});
 const stamp = () => new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomBytes(3).toString('hex');

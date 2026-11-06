@@ -5,6 +5,7 @@
 Dictionary 是一款原生 macOS 英汉查词工具。在阅读时选中英文，按 **⌥D**，
 结合可获取的原句和段落查看中文释义。也可以在主窗口输入单词、短语或句子，补充语境后查询。
 
+[官网](https://dictionary-macos-liyunhui.outerepoch3.chatgpt.site) ·
 [版本与下载](https://github.com/liyunhui0707/dictionary-macos/releases) ·
 [使用指南](docs/guide.md) · [隐私说明](PRIVACY.md) ·
 [反馈问题](https://github.com/liyunhui0707/dictionary-macos/issues)
