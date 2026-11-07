@@ -104,25 +104,25 @@ test('certificate signature inspection accepts codesign explicit designated requ
 test('daily entry verifies build, retains previous bundle and supports deliberate rollback', async () => {
   const {selectDailyBuild} = await api;
   const root=fs.realpathSync(fixture());
-  for(const id of ['old','new']) fs.mkdirSync(path.join(root,'build/qa',id,'Dictionary.app'),{recursive:true});
+  for(const id of ['old','new']) fs.mkdirSync(path.join(root,'build/qa.noindex',id,'Dictionary.app'),{recursive:true});
   const daily=path.join(root,'build/Dictionary-Daily.app');
-  fs.symlinkSync('qa/old/Dictionary.app',daily);
+  fs.symlinkSync('qa.noindex/old/Dictionary.app',daily);
   const verified=[];
   const verify=out=>{verified.push(out);return {buildID:path.basename(out)};};
   const idle=()=>({processes:[],listeners:[]});
-  const result=selectDailyBuild(root,path.join(root,'build/qa/new'),verify,idle);
-  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa/new/Dictionary.app'));
-  assert.equal(fs.realpathSync(result.previous),path.join(root,'build/qa/old/Dictionary.app'));
-  assert(fs.existsSync(path.join(root,'build/qa/old/Dictionary.app')));
-  assert.equal(selectDailyBuild(root,path.join(root,'build/qa/new'),verify,idle).unchanged,true);
-  selectDailyBuild(root,path.join(root,'build/qa/old'),verify,idle);
-  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa/old/Dictionary.app'));
+  const result=selectDailyBuild(root,path.join(root,'build/qa.noindex/new'),verify,idle);
+  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/new/Dictionary.app'));
+  assert.equal(fs.realpathSync(result.previous),path.join(root,'build/qa.noindex/old/Dictionary.app'));
+  assert(fs.existsSync(path.join(root,'build/qa.noindex/old/Dictionary.app')));
+  assert.equal(selectDailyBuild(root,path.join(root,'build/qa.noindex/new'),verify,idle).unchanged,true);
+  selectDailyBuild(root,path.join(root,'build/qa.noindex/old'),verify,idle);
+  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/old/Dictionary.app'));
   assert.equal(verified.length,3);
 });
 
 test('daily entry refuses conflicts, invalid builds, external paths and real apps without replacement', async () => {
   const {selectDailyBuild} = await api;
-  const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa/new');
+  const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa.noindex/new');
   fs.mkdirSync(path.join(out,'Dictionary.app'),{recursive:true});
   const daily=path.join(root,'build/Dictionary-Daily.app');
   const ok=()=>({buildID:'new'}), idle=()=>({processes:[],listeners:[]});
@@ -137,13 +137,13 @@ test('daily entry refuses conflicts, invalid builds, external paths and real app
 
 test('first daily entry is created exclusively and external old references are preserved', async () => {
   const {selectDailyBuild} = await api;
-  const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa/first');
+  const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa.noindex/first');
   fs.mkdirSync(path.join(out,'Dictionary.app'),{recursive:true});
   const idle=()=>({processes:[],listeners:[]});
   const result=selectDailyBuild(root,out,()=>({buildID:'first'}),idle);
   assert.equal(fs.realpathSync(result.entry),path.join(out,'Dictionary.app'));
   assert.equal(result.previous,undefined);
-  const other=fs.realpathSync(fixture()),otherOut=path.join(other,'build/qa/new');
+  const other=fs.realpathSync(fixture()),otherOut=path.join(other,'build/qa.noindex/new');
   fs.mkdirSync(path.join(otherOut,'Dictionary.app'),{recursive:true});
   const entry=path.join(other,'build/Dictionary-Daily.app');
   fs.symlinkSync('/Applications/Dictionary.app',entry);

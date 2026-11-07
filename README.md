@@ -71,10 +71,14 @@ node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs
 node scripts/qa-app.mjs build
 ```
 
-最后一条命令在 `build/qa/<build-id>/Dictionary.app` 生成独立应用包，并保存构建清单。
+最后一条命令在 `build/qa.noindex/<build-id>/Dictionary.app` 生成独立应用包，并保存构建清单。
+测试包位于 `.noindex` 目录，日常只从 `/Applications/Dictionary.app` 启动。
+通过 **Dictionary → 关于 Dictionary** 查看产品版本和确切构建编号，避免把同版本号的测试构建混淆。
 默认使用临时签名，适合本地构建；跨机器分发请遵循 [发布流程](docs/releasing.md)。
 在有开发证书的机器上，固定测试路径可使用 `build-testing --signing-identity <证书指纹>`
 与 `stage-testing <构建目录>`；不要为每次修改重建系统权限条目。
+
+开发安装与历史构建的管理方式见 [维护与安装纪律](docs/maintenance.md)。
 
 普通测试使用合成文本与受控服务，不需要真实书籍、API 密钥或运行中的本地模型。
 可选实机、渲染和模型评估测试默认跳过；自动测试通过不等同于上下文释义准确率保证。

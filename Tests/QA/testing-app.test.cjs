@@ -11,7 +11,7 @@ const signature = '# designated => identifier "com.liyunhui.DictionaryApp.testin
 function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dictionary-stage-test-')));
   function create(id, sig=signature) {
-    const out=path.join(root, 'build/qa', id);
+    const out=path.join(root, 'build/qa.noindex', id);
     fs.mkdirSync(path.join(out,'Dictionary.app'), {recursive:true});
     fs.writeFileSync(path.join(out,'Dictionary.app','fixture.json'), JSON.stringify({id, sig}));
     return out;
@@ -74,7 +74,7 @@ test('ad hoc, weak requirements, identity changes and wrong channel cannot repla
   for (const sig of ['Signature=adhoc\n# designated => cdhash H"abc"', '# designated => identifier "example"', signature.replace('anchor apple generic', 'anchor apple generic and certificate leaf = H"changed"')]) {
     const next=f.create('bad-'+Math.random(),sig);
     assert.throws(()=>stageTestingBuild(f.root,next,f.verify,f.identify,f.idle),/signature|requirement/i);
-    assert.equal(f.identify(path.join(f.root,'build/testing/Dictionary Testing.app')).sha256,'first');
+    assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Dictionary Testing.app')).sha256,'first');
   }
   assert.throws(()=>persistentRequirement({signature:''}),/signature/i);
   assert.throws(()=>stageTestingBuild(f.root,first,out=>({...f.verify(out),channel:'daily'}),f.identify,f.idle),/separately/);
@@ -86,7 +86,7 @@ test('failed copy verification, running app and concurrent staging preserve the 
   stageTestingBuild(f.root,first,f.verify,f.identify,f.idle);
   const altered=app=>({...f.identify(app), ...(app.includes('testing-stage-') ? {sha256:'corrupt'} : {})});
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,altered,f.idle),/mismatch/);
-  assert.equal(f.identify(path.join(f.root,'build/testing/Dictionary Testing.app')).sha256,'first');
+  assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Dictionary Testing.app')).sha256,'first');
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,f.identify,()=>({processes:[{pid:42}],listeners:[]})),/blocked/i);
   fs.mkdirSync(path.join(f.root,'build/testing-stage.lock'));
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,f.identify,f.idle),/EEXIST/);

@@ -194,6 +194,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
+    @objc private func showAboutDictionary() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未打包构建"
+        let build = QABuildIdentity.current?.buildID ?? "源码运行"
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .applicationVersion: version,
+            .version: build,
+            .credits: NSAttributedString(string: "根据语境理解英文。\nAI 释义请结合原句与词典参考核对。")
+        ])
+    }
+
     @objc private func openReleaseDownloads() {
         NSWorkspace.shared.open(URL(string: "https://github.com/liyunhui0707/dictionary-macos/releases")!)
     }
@@ -219,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupApplicationMenu() {
         let main = NSMenu()
         let application = NSMenu()
-        application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(showAboutDictionary), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ","))
         application.addItem(NSMenuItem(title: "查看更新与下载…", action: #selector(openReleaseDownloads), keyEquivalent: ""))
         application.addItem(.separator())

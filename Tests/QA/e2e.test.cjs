@@ -223,7 +223,7 @@ test('M2 dependency map includes direct cross-adapter, shared model/coordinator 
 async function nativeFixture({changeAfter,mutate,popup={}}={}) {
   const cp=require('node:child_process'),{syncBuiltinESMExports}=require('node:module');
   const project=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'dictionary-native-double-')));
-  const candidate=path.join(project,'build/qa/test-build'),runID='test-run',run=path.join(candidate,'runs',runID);
+  const candidate=path.join(project,'build/qa.noindex/test-build'),runID='test-run',run=path.join(candidate,'runs',runID);
   fs.mkdirSync(run,{recursive:true});fs.mkdirSync(path.join(candidate,'operator-fixtures'));
   const fixture=path.join(candidate,'operator-fixtures/TextEdit-phase1a.txt');
   fs.writeFileSync(fixture,'The bank approved my loan. We sat on the bank of the river.\n');

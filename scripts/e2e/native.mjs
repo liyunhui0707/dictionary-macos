@@ -73,8 +73,8 @@ export function ownAttempt(events,sourcePID,expected) {
 export async function runNative({root,output,options,caseID},deps={}) {
   if(!options.allowGui||!options.allowModel)throw Error('Explicit GUI and model authorization required');
   if(!options.qaBuild)throw Error('Native smoke requires --qa-build; no App is launched automatically');
-  const candidate=path.resolve(root,options.qaBuild),qaRoot=path.join(root,'build/qa');
-  if(path.dirname(candidate)!==qaRoot||fs.realpathSync(candidate)!==candidate)throw Error('Use an existing nonsymlink build/qa/<build-id> directory');
+  const candidate=path.resolve(root,options.qaBuild),qaRoot=path.join(root,'build/qa.noindex');
+  if(path.dirname(candidate)!==qaRoot||fs.realpathSync(candidate)!==candidate)throw Error('Use an existing nonsymlink build/qa.noindex/<build-id> directory');
   const call=deps.invoke??invoke,wait=deps.wait??(ms=>new Promise(resolve=>setTimeout(resolve,ms)));
   const inspect=()=>JSON.parse(call(process.execPath,['scripts/qa-app.mjs','inspect',candidate],root));
   const manifest=inspect();

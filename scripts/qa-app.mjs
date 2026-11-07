@@ -174,7 +174,7 @@ function build(signing=signingOptions()) {
     assertSigningIdentityAvailable(signing.identity, run('/usr/bin/security', ['find-identity', '-v', '-p', 'codesigning']));
   const paths=run('/usr/bin/git',['ls-files','--cached','--others','--exclude-standard','-z']).split('\0').filter(Boolean);
   assertKnownInputs(paths);
-  const buildID=stamp();const out=path.join(project,'build/qa',buildID);
+  const buildID=stamp();const out=path.join(project,'build/qa.noindex',buildID);
   fs.mkdirSync(path.dirname(out),{recursive:true});fs.mkdirSync(out,{mode:0o700});
   const source=snapshot(project,path.join(out,'source'));
   const metadata={buildID,channel:signing.channel,sourceFingerprint:source.fingerprint,head:run('/usr/bin/git',['rev-parse','HEAD']).trim(),dirty:!!run('/usr/bin/git',['status','--porcelain']).trim(),createdAt:new Date().toISOString()};
@@ -219,11 +219,11 @@ async function launch(out) {
 // A stable Finder entry, not an installation or a new signing identity.
 // Old bundles and every previous entry remain available for deliberate rollback.
 export function selectDailyBuild(root, directory, verify=inspect, checkRuntime=runtime) {
-  const qa=path.join(root,'build/qa');
+  const qa=path.join(root,'build/qa.noindex');
   const out=path.resolve(directory);
   if(path.dirname(out)!==qa || fs.realpathSync(out)!==out ||
      fs.realpathSync(path.join(out,'Dictionary.app'))!==path.join(out,'Dictionary.app'))
-    throw Error('Daily target must be a real build/qa directory');
+    throw Error('Daily target must be a real build/qa.noindex directory');
   const state=checkRuntime();assertLaunchSafe(state.processes,state.listeners);
   const manifest=verify(out);
   if (manifest.channel === 'testing') throw Error('Testing channel cannot become the daily entry');
@@ -235,7 +235,7 @@ export function selectDailyBuild(root, directory, verify=inspect, checkRuntime=r
     old=fs.readlinkSync(entry);
     const resolved=path.resolve(path.dirname(entry),old);
     if(path.basename(resolved)!=='Dictionary.app' || path.dirname(path.dirname(resolved))!==qa)
-      throw Error('Existing daily entry is outside build/qa; refused');
+      throw Error('Existing daily entry is outside build/qa.noindex; refused');
     if(resolved===path.join(out,'Dictionary.app')) return {entry,buildID:manifest.buildID,unchanged:true};
   } catch(error) { if(error.code!=='ENOENT') throw error; }
   let previous;

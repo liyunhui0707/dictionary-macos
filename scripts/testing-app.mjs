@@ -15,8 +15,8 @@ export function persistentRequirement(identity) {
 export function stageTestingBuild(root, directory, verify=inspect, identify=binaryIdentity, checkRuntime=runtime) {
   if (fs.realpathSync(root) !== root) throw Error('Use the real project path');
   const out = path.resolve(directory);
-  if (path.dirname(out) !== path.join(root, 'build/qa') || fs.realpathSync(out) !== out)
-    throw Error('Testing target must be a real build/qa directory');
+  if (path.dirname(out) !== path.join(root, 'build/qa.noindex') || fs.realpathSync(out) !== out)
+    throw Error('Testing target must be a real build/qa.noindex directory');
   const source = path.join(out, 'Dictionary.app');
   if (fs.realpathSync(source) !== source) throw Error('Symlink App refused');
   const state = checkRuntime(); assertLaunchSafe(state.processes, state.listeners);
@@ -26,7 +26,7 @@ export function stageTestingBuild(root, directory, verify=inspect, identify=bina
   const requirement = persistentRequirement(manifest.identity);
   const build = path.join(root, 'build');
   if (fs.realpathSync(build) !== build) throw Error('Symlink build directory refused');
-  const destination = path.join(build, 'testing');
+  const destination = path.join(build, 'testing.noindex');
   const appName = 'Dictionary Testing.app';
   let previous;
   if (fs.existsSync(destination)) {
@@ -41,11 +41,11 @@ export function stageTestingBuild(root, directory, verify=inspect, identify=bina
   const lock = path.join(build, 'testing-stage.lock');
   fs.mkdirSync(lock); // Exclusive; an interrupted run requires inspection, not blind retry.
   try {
-    const history = path.join(build, 'testing-history');
+    const history = path.join(build, 'testing-history.noindex');
     fs.mkdirSync(history, {recursive:true});
     if (fs.realpathSync(history) !== history) throw Error('Symlink history refused');
     const id = crypto.randomUUID();
-    const staged = path.join(build, 'testing-stage-' + id);
+    const staged = path.join(build, 'testing-stage-' + id + '.noindex');
     fs.mkdirSync(staged);
     const copied = path.join(staged, appName);
     fs.cpSync(source, copied, {recursive:true, errorOnExist:true, force:false});
