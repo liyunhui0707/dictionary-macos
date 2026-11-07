@@ -80,13 +80,13 @@ struct LookupResultView: View {
         let presentation = LookupResultPresentation(request: request, translation: translation)
         let meaning = AIMeaningPresentation(target: request.target, answer: translation.meaningInContext)
         let additional = translation.additionalMeanings
-        let hasMeaning = !translation.meaningInContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasMeaning = Translation.displayText(translation.meaningInContext) != nil
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(request.target).font(DictionaryStyle.wordFont(compact: layout == .popup))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                if hasMeaning, let pos = translation.partOfSpeech, !pos.isEmpty {
+                if hasMeaning, let pos = Translation.displayText(translation.partOfSpeech) {
                     Text(pos).font(.system(size: 12, design: .serif).italic()).foregroundStyle(DictionaryStyle.secondary)
                 }
             }
@@ -163,7 +163,7 @@ struct LookupResultView: View {
     }
 }
 
-/// Describes observable missing/echo output only; never judges accuracy, vocabulary coverage or language.
+/// Describes missing, quoted-null or echo output; never judges accuracy or vocabulary coverage.
 /// The original Translation remains untouched for source switching and inspection.
 struct AIMeaningPresentation {
     let text: String
@@ -172,10 +172,10 @@ struct AIMeaningPresentation {
 
     init(target: String, answer: String) {
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
+        if Translation.displayText(answer) == nil {
             text = "暂未获得释义"
             notice = "AI 未返回释义内容，可查看英文词典参考。"
-            originalAnswer = nil
+            originalAnswer = trimmed.isEmpty ? nil : answer
         } else if trimmed.lowercased() == target.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             text = "暂无进一步释义"
             notice = "AI 返回了原词，未提供进一步解释。"
@@ -225,7 +225,7 @@ struct LookupResultPresentation {
             default: sentenceLabel = "提供的原句 · 未核实"
             }
         }
-        sentenceTranslation = sentence == nil ? nil : translation?.exampleTranslation.flatMap { $0.isEmpty ? nil : $0 }
+        sentenceTranslation = sentence == nil ? nil : Translation.displayText(translation?.exampleTranslation)
         if request.isManual { contextLabel = "你提供的语境" }
         else {
             switch request.capture?.reliability {

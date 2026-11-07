@@ -78,6 +78,29 @@ struct LookupRequestTests {
         #expect(request.containingSentence == "We sat on the bank of the river.")
     }
 
+    @Test func manualSentenceRequiresAWholeTargetRatherThanAPrefix() throws {
+        for context in ["The bankruptcy hearing ended.", "We read about embankments.",
+                        "The bank2 record changed.", "The bank_name record changed."] {
+            let request = try LookupRequest.manual(target: "bank", context: context)
+            #expect(request.context == context)
+            #expect(request.containingSentence == nil)
+        }
+        let context = "The bankruptcy hearing ended. We rested by the bank."
+        let request = try LookupRequest.manual(target: "bank", context: context)
+        #expect(request.containingSentence == "We rested by the bank.")
+        let phrase = try LookupRequest.manual(target: "look up", context: "We look upward. Please look up the word.")
+        #expect(phrase.containingSentence == "Please look up the word.")
+    }
+
+    @Test func wholeTargetMatchingKeepsAmbiguityAndUnicodeBoundaries() throws {
+        let ambiguous = try LookupRequest.manual(target: "bank", context: "The bankruptcy ended. The bank closed. We sat by the bank.")
+        #expect(ambiguous.containingSentence == nil)
+        let quoted = try LookupRequest.manual(target: "bank", context: "😀 She wrote ‘bank’ on the card.")
+        #expect(quoted.containingSentence == "😀 She wrote ‘bank’ on the card.")
+        let absent = try LookupRequest.manual(target: "bank", context: "The bank\u{301} note changed.")
+        #expect(absent.containingSentence == nil)
+    }
+
     @Test func missingOrRepeatedOccurrenceDoesNotInventSentence() throws {
         for context in ["We sat by the river.", "The bank closed. We sat on the bank."] {
             let request = try LookupRequest.manual(target: "bank", context: context)

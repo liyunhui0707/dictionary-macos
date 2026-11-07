@@ -7,12 +7,20 @@ struct Translation: Codable, Sendable {
     let exampleTranslation: String?
     let alternatives: [String]?
 
+    /// A quoted JSON absence marker is not usable display text. Do not infer
+    /// semantic correctness or mutate the original model response here.
+    static func displayText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed.lowercased() == "null" ? nil : text
+    }
+
     /// Display-only cleanup: retain the original answer for encoding/history.
     var additionalMeanings: (literal: String?, alternatives: [String]) {
         var seen: Set<String> = [meaningInContext.trimmingCharacters(in: .whitespacesAndNewlines)]
         func distinct(_ text: String) -> String? {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty, seen.insert(value).inserted else { return nil }
+            guard Self.displayText(value) != nil, seen.insert(value).inserted else { return nil }
             return value
         }
         let literal = literalGloss.flatMap(distinct)

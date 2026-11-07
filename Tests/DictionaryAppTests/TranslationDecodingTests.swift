@@ -39,6 +39,28 @@ struct TranslationDecodingTests {
         #expect(roundTrip.meaningInContext == result.meaningInContext)
     }
 
+    @Test func quotedNullMarkersAreNotDisplayedAsMeaningsButRawOutputIsPreserved() throws {
+        let result = try decode(#"{"meaning_in_context":"null","literal_gloss":"null","part_of_speech":"null","example_translation":"null","alternatives":["null"," ","岸边"]}"#)
+        let meaning = AIMeaningPresentation(target: "syntheticlabel", answer: result.meaningInContext)
+        #expect(meaning.text == "暂未获得释义")
+        #expect(meaning.originalAnswer == "null")
+        #expect(result.additionalMeanings.literal == nil)
+        #expect(result.additionalMeanings.alternatives == ["岸边"])
+        let request = try LookupRequest.manual(target: "bank", context: "The bank closed.")
+        #expect(LookupResultPresentation(request: request, translation: result).sentenceTranslation == nil)
+        // This is presentation of malformed absence markers, not semantic rewriting.
+        #expect(result.meaningInContext == "null" && result.partOfSpeech == "null")
+        let restored = try JSONDecoder().decode(Translation.self, from: JSONEncoder().encode(result))
+        #expect(restored.meaningInContext == "null" && restored.alternatives == result.alternatives)
+        #expect(AIMeaningPresentation(target: "null", answer: "空值").text == "空值")
+        #expect(AIMeaningPresentation(target: "word", answer: "null 表示空值").text == "null 表示空值")
+        let partial = Translation(meaningInContext: "河岸", literalGloss: " null ", partOfSpeech: "null",
+                                  exampleTranslation: nil, alternatives: ["null", "岸边"])
+        #expect(partial.additionalMeanings.literal == nil)
+        #expect(partial.additionalMeanings.alternatives == ["岸边"])
+        #expect(Translation.displayText(partial.partOfSpeech) == nil)
+    }
+
     @Test func additionalMeaningsRemoveBlankAndExactDuplicatesWithoutChangingAnswer() {
         let result = Translation(meaningInContext: "河岸", literalGloss: " 河岸 ", partOfSpeech: "noun",
                                  exampleTranslation: nil, alternatives: ["河岸", "岸边", " 岸边 ", "\n", "河滨"])

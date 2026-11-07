@@ -104,10 +104,24 @@ struct LookupRequest: Sendable {
     }
 
     private static func uniqueSentence(in context: String, target: String) -> String? {
-        guard let match = context.range(of: target, options: .literal) else { return nil }
-        // Search after the first start, including overlapping occurrences.
-        let next = context.index(after: match.lowerBound)
-        guard context.range(of: target, options: .literal, range: next..<context.endIndex) == nil else { return nil }
+        // A substring in another word is not an occurrence of the entered target.
+        // Keep exact spelling and ambiguity rules; never choose the first of two
+        // eligible occurrences merely because one sentence looks more plausible.
+        let word = CharacterSet.alphanumerics.union(.nonBaseCharacters).union(CharacterSet(charactersIn: "_"))
+        let scalars = context.unicodeScalars
+        var search = context.startIndex
+        var occurrence: Range<String.Index>?
+        while search < context.endIndex,
+              let candidate = context.range(of: target, options: .literal, range: search..<context.endIndex) {
+            let before = candidate.lowerBound > context.startIndex && word.contains(scalars[scalars.index(before: candidate.lowerBound)])
+            let after = candidate.upperBound < context.endIndex && word.contains(scalars[candidate.upperBound])
+            if !before && !after {
+                guard occurrence == nil else { return nil }
+                occurrence = candidate
+            }
+            search = scalars.index(after: candidate.lowerBound)
+        }
+        guard let match = occurrence else { return nil }
         var result: String?
         context.enumerateSubstrings(in: context.startIndex..<context.endIndex, options: .bySentences) { text, _, range, stop in
             if range.lowerBound <= match.lowerBound && range.upperBound >= match.upperBound {

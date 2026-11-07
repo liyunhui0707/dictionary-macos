@@ -114,11 +114,15 @@ struct DictionaryQualityRun {
         case development, verification, phrases
         case targetOnly = "target-only", targetOnlyVerification = "target-only-verification"
         case contextualWords = "contextual-words", contextSmoke = "context-smoke"
+        case acceptance
     }
-    enum InvalidConfiguration: Error { case rounds, sampleSet, model }
+    // Input framing only; these are not claims that a real source app was tested.
+    enum Route: String { case manual, anchored, fragment }
+    enum InvalidConfiguration: Error { case rounds, sampleSet, model, route, fixture }
     let model: String
     let rounds: Int
     let sampleSet: SampleSet
+    let route: Route
 
     init(environment: [String: String]) throws {
         guard let rounds = Int(environment["DICTIONARY_QUALITY_ROUNDS"] ?? "3"), (1...3).contains(rounds) else {
@@ -129,9 +133,13 @@ struct DictionaryQualityRun {
         }
         let model = environment["DICTIONARY_QUALITY_MODEL"] ?? "qwen2.5:7b"
         guard LocalModelConfiguration.validModel(model) else { throw InvalidConfiguration.model }
+        guard let route = Route(rawValue: environment["DICTIONARY_QUALITY_ROUTE"] ?? "manual") else {
+            throw InvalidConfiguration.route
+        }
         self.model = model
         self.rounds = rounds
         self.sampleSet = sampleSet
+        self.route = route
     }
 
     var samples: [DictionaryQualityCase] {
@@ -145,7 +153,37 @@ struct DictionaryQualityRun {
         case .contextSmoke:
             DictionaryQualityCase.samples.filter { ["past-fee", "collocation", "existential", "complete-sentence"].contains($0.id) } +
             DictionaryQualityCase.validation.filter { $0.id == "validation-negation" }
+        case .acceptance:
+            // A fixed regression gate, not a new holdout set. Reuse the existing
+            // rubrics instead of adding examples to the production prompts.
+            DictionaryQualityCase.samples.filter { $0.id != "plural" } +
+            DictionaryQualityCase.validation.filter { ["validation-negation", "validation-unknown-alone"].contains($0.id) } +
+            DictionaryQualityCase.verification.filter { ["verify-locative", "verify-polysemy"].contains($0.id) } +
+            DictionaryQualityCase.contextualWords.filter { $0.id == "word-liquid" }
         }
+    }
+
+    func request(for sample: DictionaryQualityCase) throws -> LookupRequest {
+        let manual = try LookupRequest.manual(target: sample.target, context: sample.context)
+        if route == .manual { return manual }
+        guard let context = manual.context else {
+            return try LookupRequest.captured(target: sample.target, context: nil, sentence: nil,
+                source: "Synthetic", capture: .init(reliability: .targetOnly, method: .clipboard))
+        }
+        if route == .fragment {
+            return try LookupRequest.captured(target: sample.target, context: context, sentence: nil,
+                source: "Synthetic", capture: .init(reliability: .heuristic, method: .axTreeWalk,
+                                                    reason: .sentenceUnavailable))
+        }
+        let text = context as NSString
+        let selected = text.range(of: manual.target, options: .literal)
+        guard selected.location != NSNotFound else { throw InvalidConfiguration.fixture }
+        let sentence = manual.containingSentence.map { text.range(of: $0, options: .literal) }
+        return try LookupRequest.captured(target: manual.target, context: context, sentence: manual.containingSentence,
+            source: "Synthetic", capture: .init(reliability: .anchored, method: .domRange,
+                range: .init(start: selected.location, end: NSMaxRange(selected)),
+                sentenceRange: sentence.map { .init(start: $0.location, end: NSMaxRange($0)) },
+                reason: sentence == nil ? .sentenceUnavailable : nil))
     }
 
     func isInstalledLocally(in names: [String]) -> Bool {
@@ -185,6 +223,29 @@ struct DictionaryQualityTests {
         #expect(throws: DictionaryQualityRun.InvalidConfiguration.self) {
             try DictionaryQualityRun(environment: ["DICTIONARY_QUALITY_MODEL": ""])
         }
+        #expect(throws: DictionaryQualityRun.InvalidConfiguration.self) {
+            try DictionaryQualityRun(environment: ["DICTIONARY_QUALITY_ROUTE": "books-live"])
+        }
+    }
+
+    @Test func acceptanceFramesPreserveTargetAndNeverUpgradeFragmentsToConfirmedSentences() throws {
+        for route in ["manual", "anchored", "fragment"] {
+            let run = try DictionaryQualityRun(environment: ["DICTIONARY_QUALITY_SET": "acceptance",
+                                                           "DICTIONARY_QUALITY_ROUTE": route])
+            #expect(run.samples.count == 16)
+            #expect(Set(run.samples.map(\.id)).count == run.samples.count)
+            for sample in run.samples {
+                let request = try run.request(for: sample)
+                #expect(request.target == sample.target)
+                if route == "fragment" { #expect(request.containingSentence == nil) }
+                let document = try providerDocument(request.providerContext)
+                if route == "anchored", !sample.context.isEmpty {
+                    let selected = try #require(document["selection"] as? [String: Any])
+                    #expect(selected["text"] as? String == sample.target)
+                    #expect(request.capture?.range?.slice(in: sample.context) == sample.target)
+                } else { #expect(document["selection"] is NSNull) }
+            }
+        }
     }
 
     // Optional, local-only, sequential, no retries or cloud fallback. A successful
@@ -203,7 +264,7 @@ struct DictionaryQualityTests {
         let samples = run.samples
         let prompt = PromptBuilder.build(target: "", context: "", containingSentence: nil, targetLanguage: "简体中文")
         let digest = SHA256.hash(data: Data(prompt.system.utf8)).map { String(format: "%02x", $0) }.joined()
-        print("QUALITY_META model=\(run.model) rounds=\(run.rounds) cases=\(samples.count) set=\(run.sampleSet.rawValue) promptSHA256=\(digest)")
+        print("QUALITY_META model=\(run.model) rounds=\(run.rounds) cases=\(samples.count) set=\(run.sampleSet.rawValue) route=\(run.route.rawValue) promptSHA256=\(digest)")
         let ordinary = LocalDictionaryPrompt.build(target: "", matches: [], targetLanguage: "简体中文")
         let ordinaryDigest = SHA256.hash(data: Data(ordinary.system.utf8)).map { String(format: "%02x", $0) }.joined()
         print("QUALITY_META targetOnlyPromptSHA256=\(ordinaryDigest) reference=oewn-2025 maxSenses=24")
@@ -215,7 +276,17 @@ struct DictionaryQualityTests {
         for round in 1...run.rounds {
             for sample in samples {
                 try Task.checkCancellation()
-                let request = try LookupRequest.manual(target: sample.target, context: sample.context)
+                let request = try run.request(for: sample)
+                let actualPrompt = try await provider.preparePrompt(target: request.target, context: request.providerContext,
+                    containingSentence: request.containingSentence, targetLanguage: "简体中文")
+                let actualDigest = SHA256.hash(data: Data(actualPrompt.system.utf8)).map { String(format: "%02x", $0) }.joined()
+                struct InputRecord: Encodable {
+                    let target: String; let context: String?; let sentence: String?
+                    let rubric: String; let systemPromptSHA256: String
+                }
+                let input = InputRecord(target: request.target, context: request.context,
+                    sentence: request.containingSentence, rubric: sample.rubric, systemPromptSHA256: actualDigest)
+                print("QUALITY_INPUT \(round) \(sample.id) " + String(decoding: try encoder.encode(input), as: UTF8.self))
                 let started = ContinuousClock.now
                 do {
                     let result = try await provider.translate(target: request.target, context: request.providerContext,
