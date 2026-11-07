@@ -6,6 +6,8 @@ struct MainWindowView: View {
     @ObservedObject var coordinator: LookupCoordinator
     var onSettings: () -> Void = {}
     @ObservedObject var readiness: AppReadiness = .preview()
+    @ObservedObject var serviceSettings: LookupServiceSettings = .preview()
+    var onSetup: () -> Void = {}
     @StateObject private var presentation = MainWindowPresentation()
 
     private var isHome: Bool { if case .idle = coordinator.manual { return true }; return false }
@@ -23,6 +25,10 @@ struct MainWindowView: View {
                     .font(.system(size: 12)).lineSpacing(5).foregroundStyle(DictionaryStyle.secondary)
                     .padding(.horizontal, 8)
                 Spacer()
+                Button(action: onSetup) {
+                    Label(serviceSettings.label, systemImage: serviceSettings.selected == .deepSeek ? "cloud" : "desktopcomputer")
+                        .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
+                }.buttonStyle(.plain).foregroundStyle(DictionaryStyle.secondary).padding(.horizontal, 10)
                 if readiness.permission != .granted {
                     Button(action: onSettings) {
                         Label(readiness.permissionLabel, systemImage: "hand.raised")
@@ -62,10 +68,26 @@ struct MainWindowView: View {
                                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
                             }.padding(.top, 30)
                         }
-                        searchInput
-                        if !isHome {
+                        if serviceSettings.needsSetup {
+                            DictionaryCard {
+                                Text("先选择一种查词方式").font(.system(size: 17, weight: .medium))
+                                Text("选择 DeepSeek 云端查词，或使用本机 Ollama。")
+                                    .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Button("设置查词方式", action: onSetup).buttonStyle(.borderedProminent)
+                                    .accessibilityIdentifier("setup-lookup-service")
+                            }
+                        } else {
+                            searchInput
+                        }
+                        if !isHome && !serviceSettings.needsSetup {
                             Divider()
-                            LookupResultView(phase: coordinator.manual, cloud: coordinator.manualCloud)
+                            LookupResultView(phase: coordinator.manual, cloud: coordinator.manualCloud,
+                                showsCloudControls: !coordinator.primaryIsCloud, primaryLabel: coordinator.primaryLabel,
+                                showsAdditionalMeanings: !coordinator.primaryIsCloud)
+                            if case .finished(_, .failure) = coordinator.manual {
+                                Button("打开查词服务设置", action: onSetup).font(.system(size: 12))
+                            }
                         } else {
                             VStack(alignment: .leading, spacing: 12) {
                                 Divider()
@@ -74,7 +96,7 @@ struct MainWindowView: View {
                             }.font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary).padding(.top, 18)
                         }
                     }
-                    .padding(28).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
+                    .padding(28).frame(minWidth: 0, maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
                 }
             }
         }

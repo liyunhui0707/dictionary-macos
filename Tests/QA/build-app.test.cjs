@@ -11,6 +11,7 @@ function fixture(mode = 'success') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dictionary-build-regression-'));
   for (const dir of ['scripts', 'tools', 'bin']) fs.mkdirSync(path.join(root, dir));
   fs.copyFileSync(path.resolve(__dirname, '../../scripts/build-app.sh'), path.join(root, 'scripts/build-app.sh'));
+  fs.copyFileSync(path.resolve(__dirname, '../../VERSION'), path.join(root, 'VERSION'));
   fs.writeFileSync(path.join(root, 'bin/DictionaryApp'), 'candidate-binary', {mode: 0o755});
   const resource = path.join(root, 'bin/DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary');
   if (mode !== 'missing-resource') {
@@ -131,7 +132,8 @@ test('legacy success requires signing and verification and retains bundle identi
   const plist = fs.readFileSync(path.join(f.app, 'Contents/Info.plist'), 'utf8');
   assert.match(plist, /CFBundleIconFile/);
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');
-  assert.match(plist, /com\.liyunhui\.DictionaryApp/); assert.match(plist, /<string>0\.1\.0<\/string>/);
+  assert.match(plist, /com\.liyunhui\.DictionaryApp/);
+  assert(plist.includes('<string>'+fs.readFileSync(path.join(f.root,'VERSION'),'utf8').trim()+'</string>'));
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-resource');
 });
 

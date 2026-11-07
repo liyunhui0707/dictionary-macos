@@ -55,9 +55,11 @@ final class LookupCoordinator: ObservableObject {
     @Published private(set) var manual: LookupPhase = .idle
     @Published private(set) var selection: LookupPhase = .idle
     @Published private(set) var lastManualResult: LookupResult?
+    @Published private(set) var primaryLabel = "原始 AI"
+    @Published private(set) var primaryIsCloud = false
     let manualCloud: CloudAssistanceState
     let selectionCloud: CloudAssistanceState
-    private let provider: TranslationProvider
+    private var provider: TranslationProvider
     private let targetLanguage: String
     private var active: [LookupChannel: LookupOperation] = [:]
 
@@ -80,6 +82,15 @@ final class LookupCoordinator: ObservableObject {
     func configureCloudProvider(_ provider: TranslationProvider?) {
         manualCloud.configure(provider: provider)
         selectionCloud.configure(provider: provider)
+    }
+
+    func configurePrimaryProvider(_ provider: TranslationProvider, label: String, isCloud: Bool) {
+        shutdown()
+        lastManualResult = nil
+        manual = .idle
+        self.provider = provider
+        primaryLabel = label
+        primaryIsCloud = isCloud
     }
 
     @discardableResult

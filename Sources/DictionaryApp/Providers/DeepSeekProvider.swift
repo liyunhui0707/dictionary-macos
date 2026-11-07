@@ -1,13 +1,16 @@
 import Foundation
 
-/// Explicit cloud assistance only; no automatic fallback, retries, tools or configuration import.
+/// User-selected cloud lookup or explicit assistance; no automatic fallback or retries.
 final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
+    enum Purpose: String, Sendable { case assistance, lookup }
     private let apiKey: String
     private let configuration: URLSessionConfiguration
+    private let purpose: Purpose
 
-    init(apiKey: String, configuration: URLSessionConfiguration = .ephemeral) {
+    init(apiKey: String, configuration: URLSessionConfiguration = .ephemeral, purpose: Purpose = .assistance) {
         self.apiKey = apiKey
         self.configuration = configuration.copy() as! URLSessionConfiguration
+        self.purpose = purpose
     }
 
     static func configured(environment: [String: String]) -> DeepSeekProvider? {
@@ -21,17 +24,25 @@ final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
 
     func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
         guard Self.validKey(apiKey) else { throw CloudAssistanceError.notConfigured }
-        let prompt = PromptBuilder.build(target: target, context: context, containingSentence: containingSentence,
-                                         targetLanguage: targetLanguage)
+        let prompt: PromptParts
+        if purpose == .lookup, LocalDictionaryPrompt.applies(target: target, context: context, sentence: containingSentence) {
+            prompt = LocalDictionaryPrompt.build(target: target, matches: [], targetLanguage: targetLanguage)
+        } else if purpose == .lookup {
+            prompt = CloudLookupPrompt.build(target: target, context: context, sentence: containingSentence, language: targetLanguage)
+        } else {
+            prompt = PromptBuilder.build(target: target, context: context, containingSentence: containingSentence, targetLanguage: targetLanguage)
+        }
         var request = URLRequest(url: URL(string: "https://api.deepseek.com/anthropic/v1/messages")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "model": "deepseek-flash", "max_tokens": 1024, "stream": false,
             "thinking": ["type": "disabled"], "system": prompt.system,
             "messages": [["role": "user", "content": prompt.userInstruction]]
-        ])
+        ]
+        if purpose == .lookup { body["temperature"] = 0 }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let config = configuration.copy() as! URLSessionConfiguration
         config.urlCache = nil
         config.httpCookieStorage = nil
@@ -57,7 +68,7 @@ final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             let result = try decoder.decode(Translation.self, from: Data(JSONExtractor.extract(text).utf8))
-            guard !result.meaningInContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard purpose == .lookup || Translation.displayText(result.meaningInContext) != nil else {
                 throw CloudAssistanceError.noMeaning
             }
             return result
@@ -89,13 +100,13 @@ enum CloudAssistanceError: LocalizedError {
     case notConfigured, credentialUnavailable, network, timeout, invalidResponse, noMeaning, http(Int)
     var errorDescription: String? {
         switch self {
-        case .notConfigured: return "Cloud assistance is not configured."
-        case .credentialUnavailable: return "Saved DeepSeek key is unavailable. Open Dictionary Settings to enable or replace it. Your original answer is unchanged."
-        case .network: return "Could not reach DeepSeek. Your original answer is unchanged."
-        case .timeout: return "DeepSeek did not respond within 30 seconds. Your original answer is unchanged."
-        case .invalidResponse: return "DeepSeek returned an incomplete or invalid answer. Your original answer is unchanged."
-        case .noMeaning: return "DeepSeek did not provide a further meaning. Your original answer is unchanged."
-        case .http(let status): return "DeepSeek request failed (HTTP \(status)). Your original answer is unchanged."
+        case .notConfigured: return "DeepSeek 尚未配置。请打开查词服务设置。"
+        case .credentialUnavailable: return "无法读取已保存的 DeepSeek 密钥。请在设置中启用或重新保存密钥。"
+        case .network: return "无法连接 DeepSeek。请检查网络后重试。"
+        case .timeout: return "DeepSeek 在 30 秒内未响应，请稍后重试。"
+        case .invalidResponse: return "DeepSeek 返回的内容不完整或格式无效，请重试。"
+        case .noMeaning: return "DeepSeek 未提供进一步释义。"
+        case .http(let status): return "DeepSeek 请求失败（HTTP \(status)）。请检查密钥、余额或服务状态。"
         }
     }
 }

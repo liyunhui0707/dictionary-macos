@@ -18,7 +18,11 @@ fi
 APP_NAME="Dictionary"
 EXEC_NAME="DictionaryApp"
 BUNDLE_ID="com.liyunhui.${EXEC_NAME}"
-VERSION="0.1.0"
+VERSION="$(cat VERSION)"
+if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Invalid product VERSION" >&2
+    exit 1
+fi
 OUT_DIR="build"
 
 if [[ -e "${OUT_DIR}/${APP_NAME}.app" || -L "${OUT_DIR}/${APP_NAME}.app" ]]; then
