@@ -10,13 +10,15 @@ final class AppReadiness: ObservableObject {
     @Published private(set) var settingsOpenFailed = false
     let buildID: String?
     let appURL: URL
+    let version: String?
     private let checkPermission: () -> Bool
     private let openPermissionSettings: () -> Bool
     private let revealApp: (URL) -> Void
 
     init(buildID: String?, appURL: URL, checkPermission: @escaping () -> Bool,
-         openPermissionSettings: @escaping () -> Bool, revealApp: @escaping (URL) -> Void) {
+         openPermissionSettings: @escaping () -> Bool, revealApp: @escaping (URL) -> Void, version: String? = nil) {
         self.buildID = buildID; self.appURL = appURL
+        self.version = version
         self.checkPermission = checkPermission
         self.openPermissionSettings = openPermissionSettings; self.revealApp = revealApp
     }
@@ -25,7 +27,8 @@ final class AppReadiness: ObservableObject {
         AppReadiness(buildID: QABuildIdentity.current?.buildID, appURL: Bundle.main.bundleURL,
             checkPermission: { AXIsProcessTrusted() }, openPermissionSettings: {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-            }, revealApp: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
+            }, revealApp: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
     }
 
     // Default for isolated views/tests: never probes the host's actual permissions.
@@ -34,7 +37,7 @@ final class AppReadiness: ObservableObject {
             checkPermission: { false }, openPermissionSettings: { false }, revealApp: { _ in })
     }
 
-    var buildLabel: String { buildID.map { "试用构建 · \($0)" } ?? "开发构建（无构建标识）" }
+    var buildLabel: String { buildID.map { "试用构建 · \($0)" } ?? version.map { "版本 \($0)" } ?? "开发构建（无构建标识）" }
     var permissionLabel: String {
         switch permission {
         case .unchecked: "选词权限尚未检查"

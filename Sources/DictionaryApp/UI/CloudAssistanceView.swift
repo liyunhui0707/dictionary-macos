@@ -3,13 +3,14 @@ import SwiftUI
 /// Fixed above popup scrolling. Only the explicit cloud button sends data; source switching does not.
 struct CloudAssistanceView: View {
     @ObservedObject var state: CloudAssistanceState
+    var originalLabel = "原始 AI"
 
     var body: some View {
         if let offer = state.offer {
             VStack(alignment: .leading, spacing: 6) {
                 if state.phase.isLoading || state.phase.result != nil {
                     Picker("释义来源", selection: Binding(get: { state.selectedSource }, set: { state.selectSource($0) })) {
-                        Text("原始 AI").tag(CloudAssistanceState.AnswerSource.original)
+                        Text(originalLabel).tag(CloudAssistanceState.AnswerSource.original)
                         Text("DeepSeek AI").tag(CloudAssistanceState.AnswerSource.cloud)
                     }
                     .pickerStyle(.segmented)
@@ -18,7 +19,7 @@ struct CloudAssistanceView: View {
                 switch state.phase {
                 case .idle:
                     HStack {
-                        Text("原始 AI").font(.system(size: 12, weight: .medium))
+                        Text(originalLabel).font(.system(size: 12, weight: .medium))
                         Spacer(minLength: 4)
                         Button("询问 DeepSeek") { state.ask(offerID: offer.id) }
                             .disabled(!state.isConfigured)

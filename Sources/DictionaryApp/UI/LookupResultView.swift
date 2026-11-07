@@ -7,23 +7,29 @@ struct LookupResultView: View {
     var onCancel: (() -> Void)? = nil
     @ObservedObject var cloud: CloudAssistanceState
     var showsCloudControls: Bool
+    var primaryLabel: String?
+    var showsAdditionalMeanings: Bool
 
     init(phase: LookupPhase, layout: Layout = .standard, onCancel: (() -> Void)? = nil,
-         cloud: CloudAssistanceState? = nil, showsCloudControls: Bool = true) {
+         cloud: CloudAssistanceState? = nil, showsCloudControls: Bool = true,
+         primaryLabel: String? = nil, showsAdditionalMeanings: Bool = true) {
         self.phase = phase; self.layout = layout; self.onCancel = onCancel
         _cloud = ObservedObject(wrappedValue: cloud ?? CloudAssistanceState(provider: nil))
         self.showsCloudControls = showsCloudControls
+        self.primaryLabel = primaryLabel
+        self.showsAdditionalMeanings = showsAdditionalMeanings
     }
 
     var displayedPhase: LookupPhase { cloud.displayedPhase(for: phase) }
     var meaningLabel: String {
         if cloud.showsCloudAnswer(for: phase) { return "AI 释义建议 · DeepSeek" }
+        if let primaryLabel { return "AI 释义建议 · \(primaryLabel)" }
         return cloud.offer == nil ? "AI 释义建议" : "AI 释义建议 · 原始答案"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if showsCloudControls { CloudAssistanceView(state: cloud) }
+            if showsCloudControls { CloudAssistanceView(state: cloud, originalLabel: primaryLabel ?? "原始 AI") }
             switch displayedPhase {
             case .idle:
                 Label("选中英文单词，按 ⌥D 查词。", systemImage: "text.cursor")
@@ -124,7 +130,7 @@ struct LookupResultView: View {
                     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(DictionaryStyle.line))
             }
             capturedContext(presentation, source: request.source)
-            if !cloud.showsCloudAnswer(for: phase), additional.literal != nil || !additional.alternatives.isEmpty {
+            if showsAdditionalMeanings, !cloud.showsCloudAnswer(for: phase), additional.literal != nil || !additional.alternatives.isEmpty {
                 DisclosureGroup("更多释义 · AI") {
                     VStack(alignment: .leading, spacing: 10) {
                         if let gloss = additional.literal { row("一般含义 · AI", gloss) }

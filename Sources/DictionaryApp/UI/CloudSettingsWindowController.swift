@@ -6,11 +6,14 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let settings: CloudSettings
     private let localSettings: LocalModelSettings
     private let readiness: AppReadiness
+    private let serviceSettings: LookupServiceSettings
 
-    init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil) {
+    init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
+         serviceSettings: LookupServiceSettings? = nil) {
         self.settings = settings
         self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
+        self.serviceSettings = serviceSettings ?? .preview()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
@@ -22,14 +25,13 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
 
     required init?(coder: NSCoder) { nil }
 
-    func open() {
-        if window?.contentViewController == nil {
-            let height = min(580, max(240, (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 660) - 80)
-            let host = NSHostingController(rootView:
-                DictionarySettingsView(settings: settings, localSettings: localSettings, readiness: readiness).frame(width: 580, height: height))
-            window?.contentViewController = host
-            window?.setContentSize(host.view.fittingSize)
-        }
+    func open(section: DictionarySettingsSection = .general) {
+        let height = min(580, max(240, (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 660) - 80)
+        let host = NSHostingController(rootView:
+            DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
+                    readiness: readiness, serviceSettings: serviceSettings).frame(width: 580, height: height))
+        window?.contentViewController = host
+        window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -41,7 +43,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
 }
 
 enum DictionarySettingsSection: String, CaseIterable {
-    case general = "通用", local = "本地模型", cloud = "云端辅助"
+    case general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek"
 }
 
 @MainActor
@@ -54,11 +56,14 @@ struct DictionarySettingsView: View {
     @ObservedObject var settings: CloudSettings
     @ObservedObject var localSettings: LocalModelSettings
     @ObservedObject var readiness: AppReadiness
+    @ObservedObject var serviceSettings: LookupServiceSettings
     @StateObject private var navigation: SettingsNavigation
 
-    init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general, readiness: AppReadiness? = nil) {
+    init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
+         readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil) {
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
+        self.serviceSettings = serviceSettings ?? .preview()
         _navigation = StateObject(wrappedValue: SettingsNavigation(section))
     }
 
@@ -82,6 +87,7 @@ struct DictionarySettingsView: View {
                 Group {
                     switch navigation.section {
                     case .general: general
+                    case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
                     case .local: LocalModelSettingsView(settings: localSettings)
                     case .cloud: CloudSettingsView(settings: settings)
                     }
@@ -228,7 +234,7 @@ struct CloudSettingsView: View {
             DictionaryCard {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("DeepSeek 云端辅助").font(.system(size: 14, weight: .medium))
+                        Text("DeepSeek API").font(.system(size: 14, weight: .medium))
                         Text(settings.isEnabled ? "已开启" : "未开启")
                             .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                     }
@@ -237,7 +243,7 @@ struct CloudSettingsView: View {
                     else { Button("启用已存密钥") { Task { await settings.enableSavedKey() } } }
                 }
             }
-            Text("仅点击「询问 DeepSeek」时，才会发送单词、语境及选中位置。API 可能产生费用。原始答案会保留。")
+            Text("发起 DeepSeek 查询时，会发送选词、可获取的原句和附近语境，API 可能产生费用。保存密钥后，可在「查词服务」中选择云端查词。")
                 .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary).fixedSize(horizontal: false, vertical: true)
             DictionaryCard {
                 Label("API 密钥", systemImage: "key").font(.system(size: 13, weight: .medium))
@@ -266,7 +272,7 @@ struct CloudSettingsView: View {
             Button("移除", role: .destructive) { input.draft = ""; Task { await settings.remove() } }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("云端辅助将关闭。这不会撤销 DeepSeek 账户中的密钥，也无法撤回已发送的文字。")
+            Text("DeepSeek 将关闭。这不会撤销 DeepSeek 账户中的密钥，也无法撤回已发送的文字。")
         }
         .onDisappear { input.draft = "" }
     }

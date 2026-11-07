@@ -8,7 +8,7 @@ import {spawnSync, spawn} from 'node:child_process';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const roots = ['Sources', 'Tests', 'scripts', 'docs', 'extensions', '.github', 'website'];
-const topFiles = ['Package.swift', 'README.md', '.gitignore', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md', 'AGENTS.md'];
+const topFiles = ['Package.swift', 'VERSION', 'README.md', '.gitignore', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md', 'AGENTS.md'];
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const json = (file, value) => fs.writeFileSync(file, JSON.stringify(value,null,2)+'\n', {flag:'wx',mode:0o600});
 const stamp = () => new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomBytes(3).toString('hex');
@@ -110,7 +110,9 @@ export function assertSigningIdentityAvailable(identity, listing) {
   if (!fingerprints.includes(identity.toUpperCase())) throw Error('Requested code-signing identity is not available; no build or permission change performed');
 }
 
-export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions()) {
+export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions(), includeQA=true) {
+  const version=metadata.productVersion ?? fs.readFileSync(path.join(project,'VERSION'),'utf8').trim();
+  if(!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) throw Error('Invalid product VERSION');
   const app=path.join(out,'Dictionary.app');
   fs.mkdirSync(app);fs.mkdirSync(path.join(app,'Contents/MacOS'),{recursive:true});fs.mkdirSync(path.join(app,'Contents/Resources'));
   const executable=path.join(app,'Contents/MacOS/DictionaryApp');
@@ -122,11 +124,11 @@ export function packageApp(out, binary, metadata, invoke=run, signing=signingOpt
   const icon = ['Contents/Resources/AppIcon.icns','AppIcon.icns'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
   if(!icon || fs.lstatSync(icon).isSymbolicLink() || !fs.lstatSync(icon).isFile()) throw Error('Missing or unsafe app icon resource');
   fs.copyFileSync(icon,path.join(app,'Contents/Resources/AppIcon.icns'),fs.constants.COPYFILE_EXCL);
-  const values={CFBundleDevelopmentRegion:'en',CFBundleExecutable:'DictionaryApp',CFBundleIdentifier:signing.bundleID,CFBundleInfoDictionaryVersion:'6.0',CFBundleName:signing.name,CFBundleDisplayName:signing.name,CFBundlePackageType:'APPL',CFBundleShortVersionString:'0.1.0',CFBundleVersion:'0.1.0',LSMinimumSystemVersion:'14.0',NSAppleEventsUsageDescription:'Dictionary uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.'};
+  const values={CFBundleDevelopmentRegion:'en',CFBundleExecutable:'DictionaryApp',CFBundleIdentifier:signing.bundleID,CFBundleInfoDictionaryVersion:'6.0',CFBundleName:signing.name,CFBundleDisplayName:signing.name,CFBundlePackageType:'APPL',CFBundleShortVersionString:version,CFBundleVersion:version,LSMinimumSystemVersion:'14.0',NSAppleEventsUsageDescription:'Dictionary uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.'};
   values.CFBundleIconFile='AppIcon';
   const plist='<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>'+Object.entries(values).map(([k,v])=>`<key>${k}</key><string>${v}</string>`).join('')+'<key>LSUIElement</key><false/><key>NSHighResolutionCapable</key><true/></dict></plist>\n';
   fs.writeFileSync(path.join(app,'Contents/Info.plist'),plist,{flag:'wx'});
-  json(path.join(app,'Contents/Resources/qa-build.json'),metadata);
+  if(includeQA) json(path.join(app,'Contents/Resources/qa-build.json'),metadata);
   invoke('/usr/bin/codesign',['--sign',signing.identity,app]);
   invoke('/usr/bin/codesign',['--verify','--strict',app]);
   return app;
@@ -177,7 +179,7 @@ function build(signing=signingOptions()) {
   const buildID=stamp();const out=path.join(project,'build/qa.noindex',buildID);
   fs.mkdirSync(path.dirname(out),{recursive:true});fs.mkdirSync(out,{mode:0o700});
   const source=snapshot(project,path.join(out,'source'));
-  const metadata={buildID,channel:signing.channel,sourceFingerprint:source.fingerprint,head:run('/usr/bin/git',['rev-parse','HEAD']).trim(),dirty:!!run('/usr/bin/git',['status','--porcelain']).trim(),createdAt:new Date().toISOString()};
+  const metadata={buildID,productVersion:fs.readFileSync(path.join(out,'source/VERSION'),'utf8').trim(),channel:signing.channel,sourceFingerprint:source.fingerprint,head:run('/usr/bin/git',['rev-parse','HEAD']).trim(),dirty:!!run('/usr/bin/git',['status','--porcelain']).trim(),createdAt:new Date().toISOString()};
   const toolchain={swift:run('/usr/bin/xcrun',['swift','--version']).trim(),sdk:run('/usr/bin/xcrun',['--show-sdk-path']).trim(),sdkVersion:run('/usr/bin/xcrun',['--show-sdk-version']).trim(),architecture:run('/usr/bin/uname',['-m']).trim(),configuration:'release'};
   json(path.join(out,'source-manifest.json'),source);
   console.log('Building frozen source: '+out);

@@ -109,8 +109,8 @@ final class PopupController {
             NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
         if let visible = (screen ?? NSScreen.main)?.visibleFrame { updateAvailableSize(visible) }
         if window == nil {
-            let view = TranslationPopupView(state: state, onClose: { [weak self] in self?.close() },
-                                            cloud: coordinator.selectionCloud)
+            let view = CoordinatorPopupView(state: state, coordinator: coordinator,
+                                            onClose: { [weak self] in self?.close() })
             let hosting = NSHostingController(rootView: view)
             // Panel auto-resizes to fit the SwiftUI view's preferred size, so a
             // long translation no longer gets clipped by a fixed frame.
@@ -173,6 +173,16 @@ final class PopupController {
         let frame = PopupScreenBounds.clamp(window.frame, to: visible)
         // A fitting pinned panel keeps its user-chosen position.
         if frame != window.frame { window.setFrame(frame, display: true) }
+    }
+}
+
+private struct CoordinatorPopupView: View {
+    @ObservedObject var state: PopupState
+    @ObservedObject var coordinator: LookupCoordinator
+    let onClose: () -> Void
+    var body: some View {
+        TranslationPopupView(state: state, onClose: onClose, cloud: coordinator.selectionCloud,
+            primaryLabel: coordinator.primaryLabel, primaryIsCloud: coordinator.primaryIsCloud)
     }
 }
 

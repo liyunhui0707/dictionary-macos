@@ -30,7 +30,7 @@ struct SystemCloudKeychainClient: CloudKeychainClient {
 
 /// Uses the macOS file-based Keychain (compatible with the current ad-hoc app).
 /// No synchronizable attributes, custom ACL, shared access group or plaintext fallback.
-/// Access is only initiated by Save / Enable / Remove / Ask, never by launch or view rendering.
+/// Access is initiated by Save / Enable / Remove or a user cloud query, never by launch or view rendering.
 actor KeychainCloudCredentialStore: CloudCredentialStore {
     private let client: any CloudKeychainClient
     init(client: any CloudKeychainClient = SystemCloudKeychainClient()) { self.client = client }
@@ -75,11 +75,12 @@ actor KeychainCloudCredentialStore: CloudCredentialStore {
     }
 }
 
-/// Retrieves a saved credential only after the existing explicit Ask action.
+/// Retrieves a credential only for a user-selected cloud lookup or explicit Ask action.
 /// The credential is not kept in settings state or injected into a subprocess environment.
 struct KeychainDeepSeekProvider: TranslationProvider {
     let store: any CloudCredentialStore
     var configuration: URLSessionConfiguration = .ephemeral
+    var purpose: DeepSeekProvider.Purpose = .assistance
 
     func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
         let key: String
@@ -93,7 +94,7 @@ struct KeychainDeepSeekProvider: TranslationProvider {
         catch { throw CloudAssistanceError.credentialUnavailable }
         // A settings change or dismissal while Keychain is prompting must not send a request.
         try Task.checkCancellation()
-        return try await DeepSeekProvider(apiKey: key, configuration: configuration).translate(target: target, context: context,
+        return try await DeepSeekProvider(apiKey: key, configuration: configuration, purpose: purpose).translate(target: target, context: context,
             containingSentence: containingSentence, targetLanguage: targetLanguage)
     }
 }

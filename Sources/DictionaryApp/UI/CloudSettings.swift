@@ -17,7 +17,7 @@ final class CloudSettings: ObservableObject {
         self.isEnabled = enabled
         self.persistEnabled = persistEnabled
         self.applyProvider = applyProvider
-        message = enabled ? "已开启。询问 DeepSeek 时才会读取已保存的密钥。" : "云端辅助未开启。"
+        message = enabled ? "已开启。发起 DeepSeek 查询时才会读取已保存的密钥。" : "DeepSeek 未开启。"
         // Only the non-sensitive preference is restored. No Keychain access or network on launch.
         applyProvider(enabled ? KeychainDeepSeekProvider(store: store) : nil)
     }
@@ -39,7 +39,7 @@ final class CloudSettings: ObservableObject {
             message = "密钥已保存至钥匙串，尚未验证 API。"
             return true
         } catch {
-            message = "未能在钥匙串中保存并核验密钥，云端辅助已关闭。不会改用明文保存。"
+            message = "未能在钥匙串中保存并核验密钥，DeepSeek 已关闭。不会改用明文保存。"
             return false
         }
     }
@@ -57,14 +57,14 @@ final class CloudSettings: ObservableObject {
             setEnabled(true)
             message = "已保存的密钥可读取，尚未验证 API。"
         } catch {
-            message = "无法访问钥匙串，云端辅助已关闭。再次启用时，请允许钥匙串访问。"
+            message = "无法访问钥匙串，DeepSeek 已关闭。再次启用时，请允许钥匙串访问。"
         }
     }
 
     func disable() {
         guard !isBusy else { return }
         setEnabled(false)
-        message = "云端辅助已关闭，已保存的密钥仍保留在钥匙串中。"
+        message = "DeepSeek 已关闭，已保存的密钥仍保留在钥匙串中。"
     }
 
     func remove() async {
@@ -74,9 +74,9 @@ final class CloudSettings: ObservableObject {
         setEnabled(false)
         do {
             try await store.remove()
-            message = "密钥已移除，云端辅助已关闭。"
+            message = "密钥已移除，DeepSeek 已关闭。"
         } catch {
-            message = "云端辅助已关闭，但未能从钥匙串移除密钥。"
+            message = "DeepSeek 已关闭，但未能从钥匙串移除密钥。"
         }
     }
 

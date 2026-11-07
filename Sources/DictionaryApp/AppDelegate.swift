@@ -12,17 +12,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkey = GlobalHotkey()
     private let provider: TranslationProvider
     private let localConfiguration: LocalModelConfiguration
+    private let cloudCredentialStore = KeychainCloudCredentialStore()
+    private var configuredCloudProvider: TranslationProvider?
+    private var appliedPrimaryConfiguration: String?
+    private lazy var serviceSettings = LookupServiceSettings(
+        saved: UserDefaults.standard.string(forKey: LookupServiceSettings.preference),
+        isManaged: !localConfiguration.isActive,
+        persist: { UserDefaults.standard.set($0, forKey: LookupServiceSettings.preference) },
+        changed: { [weak self] in self?.applyLookupConfiguration() })
     private lazy var localSettings = LocalModelSettings(configuration: localConfiguration,
         savedModel: UserDefaults.standard.string(forKey: LocalModelConfiguration.modelPreference),
         persistModel: { UserDefaults.standard.set($0, forKey: LocalModelConfiguration.modelPreference) })
-    private lazy var coordinator = LookupCoordinator(provider: provider, targetLanguage: targetLanguage)
-    private lazy var cloudSettings = CloudSettings(store: KeychainCloudCredentialStore(),
+    private lazy var coordinator = LookupCoordinator(provider: UnconfiguredLookupProvider(cloudDisabled: false), targetLanguage: targetLanguage)
+    private lazy var cloudSettings = CloudSettings(store: cloudCredentialStore,
         enabled: UserDefaults.standard.bool(forKey: CloudSettings.enabledPreference),
         persistEnabled: { UserDefaults.standard.set($0, forKey: CloudSettings.enabledPreference) },
-        applyProvider: { [weak self] in self?.coordinator.configureCloudProvider($0) })
+        applyProvider: { [weak self] provider in
+            self?.configuredCloudProvider = provider
+            self?.serviceSettings.setCloudAvailable(provider != nil)
+        })
     private let readiness = AppReadiness.live()
-    private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings, readiness: readiness)
-    private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness, onSettings: { [weak self] in self?.openSettings() })
+    private lazy var updateWindow = ReleaseUpdateWindow(installed:
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
+    private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
+        readiness: readiness, serviceSettings: serviceSettings)
+    private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
+        serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
+        onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) })
     private lazy var captureController = SelectionCaptureController(coordinator: coordinator, diagnostics: diagnostics)
     private lazy var capturePipeline = NativeCapturePipeline(isTrusted: { AXIsProcessTrusted() },
         safari: { [self] in safariContextExtractor.extract() },
@@ -96,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         diagnostics?.record(QAEvent(kind: .processStarted, trusted: AXIsProcessTrusted()))
         _ = cloudSettings
+        applyLookupConfiguration()
         setupApplicationMenu()
         setupStatusItem()
         _ = popupController
@@ -105,6 +122,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshHotkeyForFrontmostApp()
         startHTTPServer()
         mainWindowController.open()
+    }
+
+    private func applyLookupConfiguration() {
+        let managed = !localConfiguration.isActive
+        let selected = serviceSettings.selected
+        let cloud = !managed && selected == .deepSeek
+        let ready = managed || !serviceSettings.needsSetup
+        let identity = "\(managed)/\(selected?.rawValue ?? "unconfigured")/\(ready)"
+        if identity != appliedPrimaryConfiguration {
+            let primary: TranslationProvider
+            if !ready { primary = UnconfiguredLookupProvider(cloudDisabled: cloud) }
+            else if cloud { primary = KeychainDeepSeekProvider(store: cloudCredentialStore, purpose: .lookup) }
+            else { primary = provider }
+            coordinator.configurePrimaryProvider(primary,
+                label: managed ? "Claude" : cloud ? "DeepSeek" : "Ollama", isCloud: cloud)
+            appliedPrimaryConfiguration = identity
+        }
+        coordinator.configureCloudProvider(cloud ? nil : configuredCloudProvider)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -196,7 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showAboutDictionary() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未打包构建"
-        let build = QABuildIdentity.current?.buildID ?? "源码运行"
+        let build = QABuildIdentity.current?.buildID ??
+            (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "源码运行")
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationVersion: version,
             .version: build,
@@ -205,8 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openReleaseDownloads() {
-        NSWorkspace.shared.open(URL(string: "https://github.com/liyunhui0707/dictionary-macos/releases")!)
+        NSWorkspace.shared.open(PublicRelease.downloads)
     }
+
+    @objc private func checkForUpdates() { updateWindow.open() }
 
     @objc private func openDictionary() { mainWindowController.open() }
     @objc private func openSettings() { cloudSettingsWindow.open() }
@@ -231,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let application = NSMenu()
         application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(showAboutDictionary), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ","))
+        application.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "查看更新与下载…", action: #selector(openReleaseDownloads), keyEquivalent: ""))
         application.addItem(.separator())
         application.addItem(NSMenuItem(title: "隐藏 Dictionary", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))

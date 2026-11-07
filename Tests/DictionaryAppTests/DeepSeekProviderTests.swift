@@ -123,6 +123,41 @@ struct DeepSeekProviderTests {
         #expect(CloudProtocol.requests.count == 1)
     }
 
+    @Test func primaryLookupAcceptsAnHonestUnknownAndKeepsTheSourceContract() async throws {
+        let answer = #"{"meaning_in_context":null,"part_of_speech":null,"example_translation":"标签写着 zerniqava。","alternatives":[]}"#
+        let body = try JSONSerialization.data(withJSONObject: ["stop_reason": "end_turn",
+            "content": [["type": "text", "text": answer]]])
+        CloudProtocol.reset(status: 200, body: body)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CloudProtocol.self]
+        let provider = DeepSeekProvider(apiKey: "synthetic-key", configuration: config, purpose: .lookup)
+        let request = try LookupRequest.manual(target: "zerniqava", context: "The label reads zerniqava.")
+        let result = try await provider.translate(target: request.target, context: request.providerContext,
+            containingSentence: request.containingSentence, targetLanguage: "简体中文")
+        #expect(result.meaningInContext.isEmpty && result.partOfSpeech == nil)
+        #expect(result.exampleTranslation == "标签写着 zerniqava。")
+        #expect(CloudProtocol.requests.count == 1)
+        let sent = try #require(CloudProtocol.requests.first)
+        let payload = try #require(try JSONSerialization.jsonObject(with: CloudProtocol.body(sent)) as? [String: Any])
+        #expect(payload["temperature"] as? Int == 0)
+        let messages = try #require(payload["messages"] as? [[String: String]])
+        #expect(messages[0]["content"]?.contains(request.providerContext) == true)
+    }
+
+    @Test func primaryTargetOnlyUsesDictionaryTaskWithoutInventingASentence() async throws {
+        CloudProtocol.reset(status: 200, body: Self.answer(meaning: "带电的"))
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CloudProtocol.self]
+        let provider = DeepSeekProvider(apiKey: "synthetic-key", configuration: config, purpose: .lookup)
+        let request = try LookupRequest.manual(target: "charged", context: "")
+        _ = try await provider.translate(target: request.target, context: request.providerContext,
+            containingSentence: nil, targetLanguage: "简体中文")
+        let sent = try #require(CloudProtocol.requests.first)
+        let payload = try #require(try JSONSerialization.jsonObject(with: CloudProtocol.body(sent)) as? [String: Any])
+        #expect(payload["system"] as? String == LocalDictionaryPrompt.build(target: "charged", matches: [], targetLanguage: "简体中文").system)
+        #expect(CloudProtocol.requests.count == 1)
+    }
+
     @Test(arguments: [URLError.Code.timedOut, .notConnectedToInternet])
     func transportFailureIsSanitizedAndNotRetried(code: URLError.Code) async {
         CloudProtocol.reset(status: 200, body: Data(), error: code)

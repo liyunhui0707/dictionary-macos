@@ -4,13 +4,17 @@ struct TranslationPopupView: View {
     @ObservedObject var state: PopupState
     let onClose: () -> Void
     @ObservedObject var cloud: CloudAssistanceState
+    let primaryLabel: String?
+    let primaryIsCloud: Bool
 
-    init(state: PopupState, onClose: @escaping () -> Void, cloud: CloudAssistanceState? = nil) {
+    init(state: PopupState, onClose: @escaping () -> Void, cloud: CloudAssistanceState? = nil,
+         primaryLabel: String? = nil, primaryIsCloud: Bool = false) {
         self.state = state; self.onClose = onClose
         _cloud = ObservedObject(wrappedValue: cloud ?? CloudAssistanceState(provider: nil))
+        self.primaryLabel = primaryLabel; self.primaryIsCloud = primaryIsCloud
     }
 
-    private var controlsHeight: CGFloat { cloud.offer == nil ? 0 : state.cloudControlsHeight }
+    private var controlsHeight: CGFloat { primaryIsCloud || cloud.offer == nil ? 0 : state.cloudControlsHeight }
 
     // Reuse the fixed toolbar only when content overflows. Never retain an old result during a new lookup.
     var toolbarTitle: String {
@@ -18,7 +22,7 @@ struct TranslationPopupView: View {
         if state.contentHeight > size.contentHeight,
            case .finished(let request, .success(let result)) = cloud.displayedPhase(for: state.phase) {
             let source = cloud.showsCloudAnswer(for: state.phase) ? "DeepSeek AI" :
-                cloud.offer == nil ? "AI 建议" : "原始 AI"
+                primaryLabel ?? (cloud.offer == nil ? "AI 建议" : "原始 AI")
             let meaning = AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext)
             return "\(request.target) · \(source)：\(meaning.text)"
         }
@@ -64,15 +68,16 @@ struct TranslationPopupView: View {
             }
             .frame(height: 28)
             Divider().frame(height: 1)
-            if cloud.offer != nil {
-                CloudAssistanceView(state: cloud)
+            if !primaryIsCloud, cloud.offer != nil {
+                CloudAssistanceView(state: cloud, originalLabel: primaryLabel ?? "原始 AI")
                     .background(GeometryReader { geometry in
                         Color.clear.preference(key: CloudControlsHeight.self, value: geometry.size.height)
                     })
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    LookupResultView(phase: state.phase, layout: .popup, onCancel: onClose, cloud: cloud, showsCloudControls: false)
+                    LookupResultView(phase: state.phase, layout: .popup, onCancel: onClose, cloud: cloud, showsCloudControls: false,
+                        primaryLabel: primaryLabel, showsAdditionalMeanings: !primaryIsCloud)
                         .id("lookup-result-top")
                         .padding(.trailing, 4)
                         .background(GeometryReader { geometry in

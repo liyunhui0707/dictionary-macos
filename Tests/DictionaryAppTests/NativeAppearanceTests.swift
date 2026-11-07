@@ -47,6 +47,32 @@ struct NativeAppearanceTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func deliverySetupAndUpdateScreens() async throws {
+        let cloud = CloudSettings(store: AppearanceCredentials(), enabled: false,
+            persistEnabled: { _ in }, applyProvider: { _ in })
+        let local = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil),
+            savedModel: nil, probe: AppearanceModelList(), persistModel: { _ in })
+        let settings = LookupServiceSettings(saved: nil)
+        let coordinator = LookupCoordinator(provider: ControlledProvider())
+        let state = ManualLookupState(coordinator: coordinator)
+        for scheme in [ColorScheme.light, .dark] {
+            let suffix = scheme == .light ? "light" : "dark"
+            try await host(MainWindowView(state: state, coordinator: coordinator, serviceSettings: settings),
+                size: NSSize(width: 640, height: 520), scheme: scheme, preview: "first-use-\(suffix)") { view in
+                    #expect(view.fittingSize.width <= 640)
+                    #expect(view.fittingSize.height <= 520)
+                    #expect(editors(view).isEmpty)
+                }
+            try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .service,
+                serviceSettings: settings).frame(width: 580, height: 580), size: NSSize(width: 580, height: 580),
+                scheme: scheme, preview: "choose-service-\(suffix)") { _ in }
+            let updates = ReleaseUpdates(installed: "0.2.0", fetch: { Issue.record("Unexpected update check"); return nil })
+            try await host(ReleaseUpdateView(updates: updates), size: NSSize(width: 460, height: 300),
+                scheme: scheme, preview: "updates-\(suffix)") { _ in }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
     func nativeScreensForOwnerReview() async throws {
         let provider = ControlledProvider()
         let coordinator = LookupCoordinator(provider: provider)
@@ -66,7 +92,7 @@ struct NativeAppearanceTests {
             try await host(MainWindowView(state: draft, coordinator: coordinator), size: NSSize(width: 860, height: 680),
                            scheme: scheme, preview: "home-\(suffix)") { _ in }
             for section in DictionarySettingsSection.allCases {
-                let name = section == .general ? "general" : section == .local ? "local" : "cloud"
+                let name = section == .general ? "general" : section == .local ? "local" : section == .service ? "service" : "cloud"
                 try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: section)
                     .frame(width: 580, height: 580), size: NSSize(width: 580, height: 580), scheme: scheme, preview: "settings-\(name)-\(suffix)") { _ in }
             }
