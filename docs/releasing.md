@@ -14,7 +14,7 @@ these artifacts as Apple-verified or bypass macOS security to test them.
 3. Complete relevant native capture and interaction acceptance with synthetic
    text. Record unsupported or untested applications honestly.
 4. Commit the reviewed candidate, then run `node scripts/release-app.mjs` on macOS.
-   It exports only production sources/resources and licenses from that commit,
+   It exports package sources/tests and licenses from that commit,
    builds outside the maintainer's home, strips debug symbols, packages a native
    app without private QA metadata, and ad-hoc signs it. It creates a host-architecture
    ZIP, DMG, SHA256SUMS and public provenance manifest under

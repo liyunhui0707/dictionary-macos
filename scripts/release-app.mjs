@@ -46,7 +46,9 @@ function main() {
   const scratch=fs.mkdtempSync('/private/tmp/dictionary-public-build-');
   const source=path.join(scratch,'source'); fs.mkdirSync(source);
   const tar=path.join(scratch,'source.tar');
-  run('/usr/bin/git',['archive','--format=tar','--output='+tar,'HEAD','Package.swift','VERSION','Sources','LICENSE','THIRD_PARTY_NOTICES.md']);
+  // SwiftPM resolves every declared target even when only building the product.
+  // Tests must exist in the build checkout; they are never copied into the App.
+  run('/usr/bin/git',['archive','--format=tar','--output='+tar,'HEAD','Package.swift','VERSION','Sources','Tests','LICENSE','THIRD_PARTY_NOTICES.md']);
   run('/usr/bin/tar',['-xf',tar,'-C',source]);
   const args=['swift','build','-c','release','--package-path',source,'--scratch-path',path.join(scratch,'scratch')];
   console.log('Building committed '+commit+' for '+arch+'; private build log in output directory.');
