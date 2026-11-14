@@ -9,7 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Swift tests
-        run: swift test
+        # WebKit focus and popup/field tests share AppKit's process-wide focus.
+        # Run every group in a separate process without dropping tests.
+        run: swift test --skip 'DOMSelectionTests|SafariSelectionTests'
+      - name: DOM capture tests
+        run: swift test --skip-build --filter DOMSelectionTests
+      - name: Safari capture tests
+        run: swift test --skip-build --filter SafariSelectionTests
       - name: Integration and packaging tests
         run: node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs
       - name: Release compile

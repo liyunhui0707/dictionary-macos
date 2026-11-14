@@ -78,16 +78,42 @@ async function checkConnection() {
     }
 }
 
+function captureFailure(error) {
+    const detail = String(error?.message ?? '');
+    if (/permission|cannot access|cannot be scripted|extensionssettings|access denied/i.test(detail))
+        return "浏览器未允许读取此页（CAPTURE_ACCESS_DENIED）。请检查 Dictionary Lookup 的站点访问设置；扩展不会自行修改权限。";
+    if (/receiving end does not exist/i.test(detail))
+        return "页面查词组件未连接（CAPTURE_NO_RECEIVER）。请刷新网页；浏览器内部页面和受限页面不支持读取。";
+    if (/message port closed|channel closed|context invalidated/i.test(detail))
+        return "页面连接已中断（CAPTURE_CONNECTION_CLOSED），请重新选词后查询。";
+    return "无法读取此页选词（CAPTURE_TRANSPORT_ERROR）。请刷新网页后重试。";
+}
+
+async function readSelection(tab, current) {
+    const message = () => chrome.tabs.sendMessage(tab.id, {type:'EXTRACT_SELECTION'}, {frameId:0});
+    try { return await message(); }
+    catch (error) {
+        // Extension updates leave already-open pages without a live receiver.
+        // Reconnect only that explicit failure, once, in the original main frame.
+        // Chrome still enforces the existing activeTab/host permissions.
+        if (!current() || !/receiving end does not exist/i.test(String(error?.message ?? '')) ||
+            (tab.url && !/^(https?|file):/.test(tab.url)) || !chrome.scripting?.executeScript) throw error;
+        await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},files:['content.js']});
+        if (!current()) return;
+        return await message();
+    }
+}
+
 async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:tabId}}) {
     const current = () => request.generation === lookupGeneration;
     pendingCapture = {generation:request.generation,tabId};
     // 1. Read selection + paragraph context from the content script.
     let payload;
     try {
-        payload = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_SELECTION" }, {frameId:0});
+        payload = await readSelection({...request.tab,id:tabId}, current);
     } catch (err) {
         if (!current()) return sourceChanged();
-        return report(false, "无法读取此页选词。更新扩展后请刷新网页；浏览器内部页面不支持查词。");
+        return report(false, captureFailure(err));
     }
     if (!current()) return sourceChanged();
     if (!payload || payload.empty) {
@@ -106,7 +132,7 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
         return report(false, "尚未配对，请打开 Dictionary 扩展设置保存令牌。");
     }
 
-    const [active] = await chrome.tabs.query({active:true,currentWindow:true});
+    const [active] = await chrome.tabs.query({active:true,lastFocusedWindow:true});
     if (!current() || active?.id !== tabId ||
         (request.tab.url !== undefined && active.url !== request.tab.url) ||
         (request.tab.windowId !== undefined && active.windowId !== request.tab.windowId)) return sourceChanged();
@@ -150,11 +176,12 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
     return report(true, response.status === 204 ? "查询已取消。" : "查询已完成，请查看 Dictionary 浮窗。");
 }
 
-async function lookupActiveTab() {
+async function lookupActiveTab(commandTab) {
     const generation = ++lookupGeneration;
     pendingCapture = {generation,tabId:null};
     try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = commandTab?.id ? commandTab :
+            (await chrome.tabs.query({active:true,lastFocusedWindow:true}))[0];
         if (generation !== lookupGeneration) return sourceChanged();
         if (!tab?.id) return report(false, "找不到当前网页。");
         return await lookup(tab.id, {generation,tab});
@@ -166,8 +193,8 @@ async function lookupActiveTab() {
     }
 }
 
-chrome.commands.onCommand.addListener((command) => {
-    if (command === "lookup-selection") void lookupActiveTab();
+chrome.commands.onCommand.addListener((command, tab) => {
+    if (command === "lookup-selection") void lookupActiveTab(tab);
 });
 
 chrome.runtime?.onMessage?.addListener((message, sender, reply) => {

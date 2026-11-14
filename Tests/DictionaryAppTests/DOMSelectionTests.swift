@@ -10,19 +10,29 @@ import WebKit
 struct DOMSelectionTests {
     private let paragraph = "The bank approved my loan. We sat on the bank of the river."
 
+    @Test func asynchronousFixtureHasAFiniteDeadlineAndIgnoresLateCompletion() async throws {
+        let page = DOMCapturePage()
+        try await page.load("<p id='p'>The bank closed.</p>")
+        await #expect(throws: DOMTestError.asyncDeadline) {
+            _ = try await page.asyncEvaluate("await new Promise(resolve=>setTimeout(resolve,200));return 1;",
+                                             timeoutNanoseconds: 20_000_000)
+        }
+        #expect(try await page.evaluate("1+1") as? Int == 2)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        #expect(try await page.evaluate("1+1") as? Int == 2)
+    }
+
     @Test(arguments: ["chromium", "safari"])
     func focusedEmbeddedReaderUsesItsOwnOccurrenceInsteadOfStaleParent(_ adapter: String) async throws {
         let page = DOMCapturePage()
-        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+        let reader = embeddedFrame("<p>The bank closed. They walked along the ba<strong>nk</strong> of the river.</p>")
+        try await page.load("<p id='p'>The bank approved my loan.</p>" + reader, adapter: adapter)
         _ = try await page.capture(start: 4, end: 8)
-        _ = try await page.asyncEvaluate("""
-        const frame=document.createElement('iframe');frame.id='reader';
-        const loaded=new Promise(resolve=>frame.onload=resolve);
-        frame.srcdoc='<p>The bank closed. They walked along the ba<strong>nk</strong> of the river.</p>';
-        document.body.append(frame);await loaded;
+        _ = try await page.evaluate("""
+        const frame=document.querySelector('iframe');
         const w=frame.contentWindow,p=w.document.querySelector('p');
         w.getSelection().setBaseAndExtent(p.firstChild,39,p.querySelector('strong').firstChild,2);
-        frame.focus();return null;
+        frame.focus();void 0;
         """)
         let reply = try await page.captureCurrentSelection()
         let source = "The bank closed. They walked along the bank of the river."
@@ -38,15 +48,12 @@ struct DOMSelectionTests {
     func inaccessibleOrUnselectedEmbeddedReaderNeverUsesParentSelection(_ adapter: String) async throws {
         for sandboxed in [false, true] {
             let page = DOMCapturePage()
-            try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+            let reader = embeddedFrame("<p>They walked along the bank of the river.</p>", sandboxed: sandboxed)
+            try await page.load("<p id='p'>The bank approved my loan.</p>" + reader, adapter: adapter)
             _ = try await page.capture(start: 4, end: 8)
-            _ = try await page.asyncEvaluate("""
-            const frame=document.createElement('iframe');
-            \(sandboxed ? "frame.setAttribute('sandbox','');" : "")
-            const loaded=new Promise(resolve=>frame.onload=resolve);
-            frame.srcdoc='<p>They walked along the bank of the river.</p>';
-            document.body.append(frame);await loaded;frame.focus();
-            if(document.activeElement!==frame) throw Error('fixture frame did not receive focus');return null;
+            _ = try await page.evaluate("""
+            const frame=document.querySelector('iframe');frame.focus();
+            if(document.activeElement!==frame) throw Error('fixture frame did not receive focus');void 0;
             """)
             let reply = try await page.captureCurrentSelection()
             #expect(reply["empty"] as? Bool == true)
@@ -57,17 +64,17 @@ struct DOMSelectionTests {
     @Test(arguments: [2, 9], ["chromium", "safari"])
     func nestedEmbeddedReadersFollowFocusWithinABoundedDepth(_ depth: Int, _ adapter: String) async throws {
         let page = DOMCapturePage()
-        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+        var reader = "<p>They walked along the bank of the river.</p>"
+        for _ in 0..<depth { reader = embeddedFrame(reader) }
+        try await page.load("<p id='p'>The bank approved my loan.</p>" + reader, adapter: adapter)
         _ = try await page.capture(start: 4, end: 8)
-        _ = try await page.asyncEvaluate("""
+        _ = try await page.evaluate("""
         let w=window;
         for(let i=0;i<\(depth);i++) {
-            const f=w.document.createElement('iframe'),loaded=new Promise(resolve=>f.onload=resolve);
-            f.srcdoc='<p>They walked along the bank of the river.</p>';
-            w.document.body.append(f);await loaded;f.focus();w=f.contentWindow;
+            const f=w.document.querySelector('iframe');f.focus();w=f.contentWindow;
         }
         const n=w.document.querySelector('p').firstChild;
-        w.getSelection().setBaseAndExtent(n,26,n,22);return null;
+        w.getSelection().setBaseAndExtent(n,26,n,22);void 0;
         """)
         let reply = try await page.captureCurrentSelection()
         if depth == 2 {
@@ -92,21 +99,30 @@ struct DOMSelectionTests {
     @Test(arguments: ["chromium", "safari"], [false, true])
     func focusChangeDuringEmbeddedCaptureWithholdsTheResult(_ adapter: String, _ withinReader: Bool) async throws {
         let page = DOMCapturePage()
-        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
-        _ = try await page.asyncEvaluate("""
-        const f=document.createElement('iframe'),loaded=new Promise(resolve=>f.onload=resolve);
-        f.srcdoc='<p>They walked along the bank of the river.</p>';
-        document.body.append(f);await loaded;f.focus();
+        let reader = embeddedFrame("<p>They walked along the bank of the river.</p>")
+        try await page.load("<p id='p'>The bank approved my loan.</p>" + reader, adapter: adapter)
+        _ = try await page.evaluate("""
+        const f=document.querySelector('iframe');f.focus();
         const w=f.contentWindow,n=w.document.querySelector('p').firstChild;
         w.getSelection().setBaseAndExtent(n,22,n,26);
         const original=w.getSelection.bind(w);
         const input=w.document.createElement('input');w.document.body.append(input);
         w.getSelection=()=>{\(withinReader ? "input.focus();" : "document.getElementById('p').tabIndex=0;document.getElementById('p').focus();")return original();};
-        return null;
+        void 0;
         """)
         let reply = try await page.captureCurrentSelection()
         #expect(reply["empty"] as? Bool == true)
         #expect(reply["reason"] as? String == "sourceChanged")
+    }
+
+    // Parser-loaded frames use the existing bounded native navigation deadline.
+    // Do not hold an async JavaScript call open waiting for its own iframe load.
+    private func embeddedFrame(_ content: String, sandboxed: Bool = false) -> String {
+        let escaped = content.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        return "<iframe \(sandboxed ? "sandbox" : "") srcdoc=\"\(escaped)\"></iframe>"
     }
 
     private func assertFocusedReaderFlow(_ page: DOMCapturePage, reply: [String: Any], target: String,
@@ -894,10 +910,21 @@ final class DOMCapturePage: NSObject, WKNavigationDelegate {
         try await view.evaluateJavaScript(script)
     }
 
-    func asyncEvaluate(_ script: String) async throws -> Any? {
-        try await withCheckedThrowingContinuation { continuation in
-            view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) {
-                continuation.resume(with: $0)
+    func asyncEvaluate(_ script: String, timeoutNanoseconds: UInt64 = 10_000_000_000) async throws -> Any? {
+        var pending: CheckedContinuation<Any?, Error>?
+        return try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            let deadline = Task { @MainActor in
+                do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
+                guard let reply = pending else { return }
+                pending = nil
+                reply.resume(throwing: DOMTestError.asyncDeadline)
+            }
+            view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
+                deadline.cancel()
+                guard let reply = pending else { return }
+                pending = nil
+                reply.resume(with: result.map { Optional.some($0) })
             }
         }
     }
@@ -963,7 +990,7 @@ final class DOMCapturePage: NSObject, WKNavigationDelegate {
     }
 }
 
-private enum DOMTestError: Error { case navigationDeadline }
+private enum DOMTestError: Error { case navigationDeadline, asyncDeadline }
 
 private func jsScalar(_ text: String) -> String { String(decoding: try! JSONEncoder().encode(text), as: UTF8.self) }
 struct NewlineFixture { let raw: String; let start: Int; var html: String? = nil }
