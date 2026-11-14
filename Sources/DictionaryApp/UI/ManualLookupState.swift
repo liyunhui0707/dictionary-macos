@@ -26,7 +26,11 @@ final class ManualLookupState: ObservableObject {
     /// Preparing a sample is separate from submitting it, especially for paid providers.
     @discardableResult
     func prepareExample() -> Bool {
-        guard target.isEmpty, context.isEmpty, !coordinator.manual.isLoading else { return false }
+        guard target.isEmpty, context.isEmpty, !coordinator.manual.isLoading else {
+            validationMessage = coordinator.manual.isLoading ? "正在查询，请完成或取消后再准备样例。" :
+                "已保留现有输入。需要填入样例时，请先手动清空单词和语境。"
+            return false
+        }
         target = "bank"
         context = "They walked along the bank of the river."
         validationMessage = nil

@@ -56,3 +56,18 @@ Cleanup must not delete source or evidence merely to make the project look tidy.
 
 The current product still needs contextual-meaning and cross-application acceptance.
 Installation housekeeping and a successful build do not declare development complete.
+
+## Isolated first-use acceptance
+
+The fixed certificate-signed Testing app can opt into a new configuration with
+`DICTIONARY_QA_FIRST_USE` set to a fresh UUID. The app requires its Testing bundle
+identity and QA build metadata, and rejects provider/model launch overrides in
+this mode. Invalid requests stop launch rather than falling back to daily data.
+Public and daily builds cannot enable this mode.
+
+The UUID names a separate preferences suite, token directory and dedicated
+Keychain item. No existing preference or credential is copied, cleared or read.
+Reuse the same UUID only to test that configuration's restart behavior. Do not
+read pairing tokens in logs; the operator performs any pairing or key entry.
+This verifies a fresh App configuration, not a new macOS account, model download,
+system permission grant or cloud account. Those require separate evidence.

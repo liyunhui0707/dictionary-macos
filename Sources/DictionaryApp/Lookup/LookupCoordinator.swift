@@ -57,6 +57,7 @@ final class LookupCoordinator: ObservableObject {
     @Published private(set) var lastManualResult: LookupResult?
     @Published private(set) var primaryLabel = "原始 AI"
     @Published private(set) var primaryIsCloud = false
+    @Published private(set) var configurationID = UUID()
     let manualCloud: CloudAssistanceState
     let selectionCloud: CloudAssistanceState
     private var provider: TranslationProvider
@@ -91,6 +92,7 @@ final class LookupCoordinator: ObservableObject {
         self.provider = provider
         primaryLabel = label
         primaryIsCloud = isCloud
+        configurationID = UUID()
     }
 
     @discardableResult

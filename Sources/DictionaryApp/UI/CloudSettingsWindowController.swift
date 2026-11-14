@@ -7,15 +7,18 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let localSettings: LocalModelSettings
     private let readiness: AppReadiness
     private let serviceSettings: LookupServiceSettings
+    private let progress: FirstLookupProgress
     private let onExample: () -> Void
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
-         serviceSettings: LookupServiceSettings? = nil, onExample: @escaping () -> Void = {}) {
+         serviceSettings: LookupServiceSettings? = nil, progress: FirstLookupProgress? = nil,
+         onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings
         self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
+        self.progress = progress ?? FirstLookupProgress()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
@@ -31,7 +34,8 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         let height = min(580, max(240, (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 660) - 80)
         let host = NSHostingController(rootView:
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
-                    readiness: readiness, serviceSettings: serviceSettings, onExample: onExample).frame(width: 580, height: height))
+                    readiness: readiness, serviceSettings: serviceSettings, progress: progress,
+                    onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -59,15 +63,18 @@ struct DictionarySettingsView: View {
     @ObservedObject var localSettings: LocalModelSettings
     @ObservedObject var readiness: AppReadiness
     @ObservedObject var serviceSettings: LookupServiceSettings
+    @ObservedObject var progress: FirstLookupProgress
     let onExample: () -> Void
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
-         readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil, onExample: @escaping () -> Void = {}) {
+         readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil,
+         progress: FirstLookupProgress? = nil, onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
+        self.progress = progress ?? FirstLookupProgress()
         _navigation = StateObject(wrappedValue: SettingsNavigation(section))
     }
 
@@ -90,7 +97,8 @@ struct DictionarySettingsView: View {
             ScrollView {
                 Group {
                     switch navigation.section {
-                    case .started: GettingStartedView(onService: { navigation.section = .service },
+                    case .started: GettingStartedView(service: serviceSettings, local: localSettings,
+                        readiness: readiness, progress: progress, onService: { navigation.section = .service },
                         onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general }, onExample: onExample)
                     case .general: general
                     case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
@@ -176,6 +184,27 @@ struct LocalModelSettingsView: View {
                     }
                     Text(settings.statusMessage).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("local-model-status")
+                    if settings.status == .unavailable || settings.status == .timedOut {
+                        Text("已安装 Ollama 时先打开它，再重新检查；还未安装时，从官方网站下载安装。Dictionary 不会自动安装服务。")
+                            .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                        Link("打开 Ollama 官方下载页", destination: URL(string: "https://ollama.com/download/mac")!)
+                    }
+                    if settings.status == .missingModel {
+                        Text("可选择下面已安装的模型。需要准备新模型时，请自行在 Ollama 中下载，完成后重新检查；模型不会随 Dictionary 安装。")
+                            .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                        if LocalModelConfiguration.matches(settings.configuration.model, LocalModelConfiguration.defaultModel) {
+                            DisclosureGroup("准备默认本地模型") {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("打开 Ollama 后，在终端运行下列命令。模型下载需要数 GB 空间；此处不会执行下载。")
+                                    Text("ollama pull qwen2.5:7b").font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                                    Link("查看官方模型说明", destination: URL(string: "https://ollama.com/library/qwen2.5:7b")!)
+                                    Text("默认模型仍有已知误译，准备完成不等于释义质量通过。")
+                                }.font(.system(size: 12)).padding(.top, 6)
+                            }
+                        } else {
+                            Link("查看 Ollama 模型目录", destination: URL(string: "https://ollama.com/library")!)
+                        }
+                    }
                     HStack {
                         Button("检查连接") { Task { await settings.check() } }.disabled(settings.isChecking)
                         if settings.isChecking { ProgressView().controlSize(.small) }

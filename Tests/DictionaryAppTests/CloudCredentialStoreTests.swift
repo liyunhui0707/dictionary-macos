@@ -5,6 +5,19 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct CloudCredentialStoreTests {
+    @Test func firstUseQAUsesAnotherDedicatedItemWithoutChangingTheDailyQuery() async throws {
+        let client = RecordingKeychain(), id = UUID()
+        client.readStatus = errSecItemNotFound
+        let store = KeychainCloudCredentialStore(client: client, isolationID: id)
+        #expect(try await store.read() == nil)
+        try await store.save("synthetic-only")
+        try await store.remove()
+        #expect(client.queries.allSatisfy {
+            $0[kSecAttrService as String] as? String == "com.liyunhui.DictionaryApp.testing.first-use.\(id.uuidString).cloud.deepseek"
+        })
+        #expect(!client.queries.contains { $0[kSecAttrService as String] as? String == "com.liyunhui.DictionaryApp.cloud.deepseek" })
+    }
+
     @Test func readUpdateAndDeleteUseOnlyTheDedicatedItem() async throws {
         let client = RecordingKeychain()
         client.readData = Data("synthetic-only".utf8)

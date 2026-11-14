@@ -11,21 +11,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkey = GlobalHotkey()
     private let provider: TranslationProvider
     private let localConfiguration: LocalModelConfiguration
-    private let cloudCredentialStore = KeychainCloudCredentialStore()
+    private let cloudCredentialStore: KeychainCloudCredentialStore
+    private let preferences: UserDefaults
     private var configuredCloudProvider: TranslationProvider?
     private var appliedPrimaryConfiguration: String?
     private lazy var serviceSettings = LookupServiceSettings(
-        saved: UserDefaults.standard.string(forKey: LookupServiceSettings.preference),
+        saved: preferences.string(forKey: LookupServiceSettings.preference),
         isManaged: !localConfiguration.isActive,
-        persist: { UserDefaults.standard.set($0, forKey: LookupServiceSettings.preference) },
+        persist: { [weak self] in self?.preferences.set($0, forKey: LookupServiceSettings.preference) },
         changed: { [weak self] in self?.applyLookupConfiguration() })
     private lazy var localSettings = LocalModelSettings(configuration: localConfiguration,
-        savedModel: UserDefaults.standard.string(forKey: LocalModelConfiguration.modelPreference),
-        persistModel: { UserDefaults.standard.set($0, forKey: LocalModelConfiguration.modelPreference) })
+        savedModel: preferences.string(forKey: LocalModelConfiguration.modelPreference),
+        persistModel: { [weak self] in self?.preferences.set($0, forKey: LocalModelConfiguration.modelPreference) })
     private lazy var coordinator = LookupCoordinator(provider: UnconfiguredLookupProvider(cloudDisabled: false), targetLanguage: targetLanguage)
+    private lazy var firstLookupProgress = FirstLookupProgress(coordinator: coordinator)
     private lazy var cloudSettings = CloudSettings(store: cloudCredentialStore,
-        enabled: UserDefaults.standard.bool(forKey: CloudSettings.enabledPreference),
-        persistEnabled: { UserDefaults.standard.set($0, forKey: CloudSettings.enabledPreference) },
+        enabled: preferences.bool(forKey: CloudSettings.enabledPreference),
+        persistEnabled: { [weak self] in self?.preferences.set($0, forKey: CloudSettings.enabledPreference) },
         applyProvider: { [weak self] provider in
             self?.configuredCloudProvider = provider
             self?.serviceSettings.setCloudAvailable(provider != nil)
@@ -34,14 +36,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updateWindow = ReleaseUpdateWindow(installed:
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
-        readiness: readiness, serviceSettings: serviceSettings, onExample: { [weak self] in self?.prepareExample() })
+        readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress,
+        onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
         onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) },
         onGettingStarted: { [weak self] in self?.openGettingStarted() })
     private lazy var captureController = SelectionCaptureController(coordinator: coordinator, diagnostics: diagnostics)
     private let targetLanguage = "简体中文"
-    private let tokenStore = TokenStore()
+    private let tokenStore: TokenStore
     private var httpServer: HTTPServer?
     private static let httpPort: UInt16 = 49152
 
@@ -84,10 +87,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "md.obsidian"
     ]
 
-    override init() {
+    init(firstUse: FirstUseIsolation? = nil) throws {
+        let preferences: UserDefaults
+        if let firstUse {
+            guard let isolated = UserDefaults(suiteName: firstUse.preferencesDomain) else {
+                throw FirstUseIsolation.Failure.unavailablePreferences
+            }
+            preferences = isolated
+        } else { preferences = .standard }
+        self.preferences = preferences
+        self.cloudCredentialStore = KeychainCloudCredentialStore(isolationID: firstUse?.id)
+        self.tokenStore = TokenStore(directory: firstUse?.tokenDirectory)
         let environment = ProcessInfo.processInfo.environment
         let configuration = LocalModelConfiguration(environment: environment,
-            savedModel: UserDefaults.standard.string(forKey: LocalModelConfiguration.modelPreference))
+            savedModel: preferences.string(forKey: LocalModelConfiguration.modelPreference))
         self.localConfiguration = configuration
         self.provider = Self.makeProvider(environment: environment, configuration: configuration)
         super.init()
@@ -109,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         diagnostics?.record(QAEvent(kind: .processStarted, trusted: AXIsProcessTrusted()))
         _ = cloudSettings
         applyLookupConfiguration()
+        _ = firstLookupProgress
         setupApplicationMenu()
         setupStatusItem()
         _ = popupController
