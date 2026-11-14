@@ -7,9 +7,11 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let localSettings: LocalModelSettings
     private let readiness: AppReadiness
     private let serviceSettings: LookupServiceSettings
+    private let onExample: () -> Void
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
-         serviceSettings: LookupServiceSettings? = nil) {
+         serviceSettings: LookupServiceSettings? = nil, onExample: @escaping () -> Void = {}) {
+        self.onExample = onExample
         self.settings = settings
         self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
@@ -29,7 +31,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         let height = min(580, max(240, (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 660) - 80)
         let host = NSHostingController(rootView:
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
-                    readiness: readiness, serviceSettings: serviceSettings).frame(width: 580, height: height))
+                    readiness: readiness, serviceSettings: serviceSettings, onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -43,7 +45,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
 }
 
 enum DictionarySettingsSection: String, CaseIterable {
-    case general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek"
+    case started = "开始使用", general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek"
 }
 
 @MainActor
@@ -57,10 +59,12 @@ struct DictionarySettingsView: View {
     @ObservedObject var localSettings: LocalModelSettings
     @ObservedObject var readiness: AppReadiness
     @ObservedObject var serviceSettings: LookupServiceSettings
+    let onExample: () -> Void
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
-         readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil) {
+         readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil, onExample: @escaping () -> Void = {}) {
+        self.onExample = onExample
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
@@ -86,6 +90,8 @@ struct DictionarySettingsView: View {
             ScrollView {
                 Group {
                     switch navigation.section {
+                    case .started: GettingStartedView(onService: { navigation.section = .service },
+                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general }, onExample: onExample)
                     case .general: general
                     case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
                     case .local: LocalModelSettingsView(settings: localSettings)

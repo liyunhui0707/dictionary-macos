@@ -33,26 +33,52 @@ async function notify(message) {
     }
 }
 
+async function report(ok, message) {
+    try {
+        if (chrome.action) {
+            await chrome.action.setBadgeText({ text: ok ? "" : "!" });
+            if (!ok) await chrome.action.setBadgeBackgroundColor({ color: "#9b302f" });
+        }
+    } catch { /* Feedback failures must not suppress the lookup outcome. */ }
+    if (!ok) await notify(message);
+    return { ok, message };
+}
+
+async function checkConnection() {
+    const token = await getToken();
+    if (!token) return { ok: false, message: "尚未配对。请从 Dictionary 菜单复制扩展令牌并在此保存。" };
+    try {
+        const response = await fetch("http://127.0.0.1:49152/v1/status", {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(3000), cache: "no-store"
+        });
+        if (response.status === 401) return { ok: false, message: "配对已失效，请重新从当前 Dictionary 复制令牌。" };
+        if (response.status === 404) return { ok: false, message: "Dictionary 版本较旧，请更新 App 后再检查连接。" };
+        if (response.status !== 200) return { ok: false, message: `连接检查失败（HTTP ${response.status}）。` };
+        const body = await response.json();
+        if (body.service !== "dictionary" || body.protocol !== 1) return { ok: false, message: "本机服务响应不兼容。" };
+        return { ok: true, message: "已连接 Dictionary。连接检查不会调用模型。" };
+    } catch {
+        return { ok: false, message: "无法连接 Dictionary，请启动 App；若已运行，检查是否有另一版本占用端口。" };
+    }
+}
+
 async function lookup(tabId) {
     // 1. Read selection + paragraph context from the content script.
     let payload;
     try {
         payload = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_SELECTION" });
     } catch (err) {
-        await notify("Could not read selection on this page. Try reloading the tab.");
-        return;
+        return report(false, "无法读取此页选词。更新扩展后请刷新网页；浏览器内部页面不支持查词。");
     }
     if (!payload || payload.empty) {
-        await notify("No text selected. Highlight a word or phrase first.");
-        return;
+        return report(false, "请先在网页正文中选中英文单词。");
     }
 
     // 2. Fetch token.
     const token = await getToken();
     if (!token) {
-        await notify("Extension token not set. Open extension options to paste it.");
-        await chrome.runtime.openOptionsPage();
-        return;
+        return report(false, "尚未配对，请打开 Dictionary 扩展设置保存令牌。");
     }
 
     // 3. POST to the Mac app.
@@ -73,30 +99,45 @@ async function lookup(tabId) {
             })
         });
     } catch (err) {
-        await notify("Dictionary app is not running. Launch it from Spotlight, then try again.");
-        return;
+        return report(false, "无法连接 Dictionary，请启动 App 后重试。");
     }
 
     if (response.status === 401) {
-        await notify("Token rejected. Open extension options and paste a fresh token from the Mac app.");
-        return;
+        return report(false, "配对已失效，请从当前 Dictionary 重新复制令牌。");
     }
     if (response.status === 503) {
-        const body = await response.json().catch(() => ({}));
-        await notify(`Translation service error: ${body.error || "unknown"}`);
-        return;
+        return report(false, "翻译服务暂不可用，请在 Dictionary 中检查查词服务设置。");
     }
     if (!response.ok) {
-        const text = await response.text();
-        await notify(`Server returned ${response.status}: ${text.slice(0, 200)}`);
-        return;
+        return report(false, `查询失败（HTTP ${response.status}）。`);
     }
-    // 200 — Mac app shows the popup. Nothing else to do.
+    return report(true, response.status === 204 ? "查询已取消。" : "查询已完成，请查看 Dictionary 浮窗。");
 }
 
-chrome.commands.onCommand.addListener(async (command) => {
-    if (command !== "lookup-selection") return;
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
-    await lookup(tab.id);
+async function lookupActiveTab() {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) return report(false, "找不到当前网页。");
+        return await lookup(tab.id);
+    } catch {
+        return report(false, "扩展查询失败，请重新加载扩展并刷新网页。");
+    }
+}
+
+chrome.commands.onCommand.addListener((command) => {
+    if (command === "lookup-selection") void lookupActiveTab();
+});
+
+chrome.runtime?.onMessage?.addListener((message, sender, reply) => {
+    // Only extension-owned pages may initiate a lookup or inspect saved pairing.
+    if (sender.id !== chrome.runtime.id ||
+        sender.url !== chrome.runtime.getURL("options.html")) return;
+    if (message?.type === "CHECK_CONNECTION") {
+        checkConnection().then(reply, () => reply({ ok: false, message: "连接检查失败。" }));
+        return true;
+    }
+    if (message?.type === "LOOKUP_ACTIVE_TAB") {
+        lookupActiveTab().then(reply, () => reply({ ok: false, message: "查询失败。" }));
+        return true;
+    }
 });

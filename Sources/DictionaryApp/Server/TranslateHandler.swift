@@ -14,7 +14,8 @@ final class TranslateHandler {
 
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
         // 1. Method + path check.
-        guard request.method == "POST", request.path == "/v1/translate" else {
+        let isStatus = request.method == "GET" && request.path == "/v1/status"
+        guard isStatus || (request.method == "POST" && request.path == "/v1/translate") else {
             return .empty(status: 404)
         }
 
@@ -31,6 +32,9 @@ final class TranslateHandler {
         guard !provided.isEmpty, provided == expected else {
             return .json(status: 401, ["error": "invalid token"])
         }
+
+        // Pairing checks must not call the model, supersede a lookup or show a popup.
+        if isStatus { return .json(status: 200, ["service": "dictionary", "protocol": 1]) }
 
         // 3. Decode body.
         let payload: TranslatePayload

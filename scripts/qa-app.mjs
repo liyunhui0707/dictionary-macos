@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // No dependencies. Commands never stop processes, replace bundles or read credentials.
 import fs from 'node:fs';
+import {bundleBrowserExtension} from './browser-extension.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -110,7 +111,7 @@ export function assertSigningIdentityAvailable(identity, listing) {
   if (!fingerprints.includes(identity.toUpperCase())) throw Error('Requested code-signing identity is not available; no build or permission change performed');
 }
 
-export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions(), includeQA=true) {
+export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions(), includeQA=true, extensionSource=path.join(project,'extensions/chromium')) {
   const version=metadata.productVersion ?? fs.readFileSync(path.join(project,'VERSION'),'utf8').trim();
   if(!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) throw Error('Invalid product VERSION');
   const app=path.join(out,'Dictionary.app');
@@ -124,6 +125,7 @@ export function packageApp(out, binary, metadata, invoke=run, signing=signingOpt
   const icon = ['Contents/Resources/AppIcon.icns','AppIcon.icns'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
   if(!icon || fs.lstatSync(icon).isSymbolicLink() || !fs.lstatSync(icon).isFile()) throw Error('Missing or unsafe app icon resource');
   fs.copyFileSync(icon,path.join(app,'Contents/Resources/AppIcon.icns'),fs.constants.COPYFILE_EXCL);
+  bundleBrowserExtension(extensionSource,path.join(app,'Contents/Resources/BrowserExtension'));
   const values={CFBundleDevelopmentRegion:'en',CFBundleExecutable:'DictionaryApp',CFBundleIdentifier:signing.bundleID,CFBundleInfoDictionaryVersion:'6.0',CFBundleName:signing.name,CFBundleDisplayName:signing.name,CFBundlePackageType:'APPL',CFBundleShortVersionString:version,CFBundleVersion:version,LSMinimumSystemVersion:'14.0',NSAppleEventsUsageDescription:'Dictionary uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.'};
   values.CFBundleIconFile='AppIcon';
   const plist='<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>'+Object.entries(values).map(([k,v])=>`<key>${k}</key><string>${v}</string>`).join('')+'<key>LSUIElement</key><false/><key>NSHighResolutionCapable</key><true/></dict></plist>\n';
@@ -189,7 +191,7 @@ function build(signing=signingOptions()) {
   if(compiled.error || compiled.status!==0) throw Error('Release build failed; inspect '+path.join(out,'build.log'));
   const binPath=run('/usr/bin/xcrun',[...args,'--show-bin-path'],out).trim();
   verifySnapshot(path.join(out,'source'),source);
-  const app=packageApp(out,path.join(binPath,'DictionaryApp'),metadata,run,signing);
+  const app=packageApp(out,path.join(binPath,'DictionaryApp'),metadata,run,signing,true,path.join(out,'source/extensions/chromium'));
   const manifest={...metadata,ready:true,toolchain,source,identity:binaryIdentity(app),signingNote:signing.identity === '-' ? 'Ad-hoc archive: permission continuity is not guaranteed. Do not use for routine desktop iteration.' : 'Certificate-signed build. Check running-process trust; do not reset permissions routinely.'};
   json(path.join(out,'build-manifest.json'),manifest);
   console.log(JSON.stringify({out,...metadata,identity:manifest.identity},null,2));

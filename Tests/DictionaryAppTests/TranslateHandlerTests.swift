@@ -5,6 +5,27 @@ import Testing
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct TranslateHandlerTests {
+    @Test func authenticatedStatusDoesNotInvokeOrCancelProvider() async throws {
+        let (provider, coordinator, handler, token) = setup()
+        let active = coordinator.submit(try .manual(target: "active", context: ""), to: .selection)
+        await provider.waitForCall("active")
+        for (credential, status) in [("wrong", 401), (token, 200)] {
+            let response = await handler.handle(HTTPRequest(method: "GET", path: "/v1/status",
+                headers: ["authorization": "Bearer \(credential)"], body: Data()))
+            #expect(response.status == status)
+            if status == 200 {
+                let body = try #require(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
+                #expect(body["service"] as? String == "dictionary")
+                #expect(body["protocol"] as? Int == 1)
+                #expect(!String(decoding: response.body, as: UTF8.self).contains(token))
+            }
+            #expect(coordinator.selection.isLoading)
+        }
+        #expect(await provider.calls.count == 1)
+        await provider.succeed("active")
+        #expect(await active.value.result != nil)
+    }
+
     // P03: existing HTTP input accepts unknown metadata, but baseline loses its position.
     @Test func sameSentenceSelectedOccurrencesReachProviderDistinctly() async throws {
         let (provider, _, handler, token) = setup()

@@ -23,6 +23,16 @@ final class ManualLookupState: ObservableObject {
         }
     }
 
+    /// Preparing a sample is separate from submitting it, especially for paid providers.
+    @discardableResult
+    func prepareExample() -> Bool {
+        guard target.isEmpty, context.isEmpty, !coordinator.manual.isLoading else { return false }
+        target = "bank"
+        context = "They walked along the bank of the river."
+        validationMessage = nil
+        return true
+    }
+
     func cancel() { coordinator.cancel(.manual) }
     func close() { coordinator.closeManual() }
 }

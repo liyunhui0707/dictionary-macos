@@ -77,6 +77,19 @@ struct HTTPServerConnectionTests {
         }
     }
 
+    @Test func statusOverSocketRequiresAuthenticationWithoutStartingLookup() async throws {
+        let (server, provider, _, token) = try setup()
+        defer { server.stop() }
+        let port = try await readyPort(server)
+        for (credential, status) in [("wrong", 401), (token, 200)] {
+            let response = try await Self.exchange("GET /v1/status HTTP/1.1\r\nAuthorization: Bearer \(credential)\r\n\r\n", port: port)
+            #expect(response.hasPrefix("HTTP/1.1 \(status) "))
+            if status == 200 { #expect(response.contains("dictionary")) }
+            #expect(!response.contains(token))
+        }
+        #expect(await provider.calls.isEmpty)
+    }
+
     @Test func invalidUnauthenticatedFramingReturns400AndServerStillHandles401And200() async throws {
         let (server, provider, _, token) = try setup()
         defer { server.stop() }

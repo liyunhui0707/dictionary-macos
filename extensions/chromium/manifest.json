@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dictionary Lookup",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send selected text + paragraph context to the Dictionary macOS app for context-aware translation.",
   "permissions": ["activeTab", "scripting", "storage", "notifications"],
   "host_permissions": ["http://127.0.0.1:49152/*"],
@@ -33,5 +33,14 @@
     "16": "icons/16.png",
     "48": "icons/48.png",
     "128": "icons/128.png"
+  },
+  "action": {
+      "default_title": "Dictionary：查词与连接检查",
+      "default_popup": "options.html",
+      "default_icon": {
+          "16": "icons/16.png",
+          "48": "icons/48.png",
+          "128": "icons/128.png"
+      }
   }
 }

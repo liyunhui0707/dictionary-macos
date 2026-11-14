@@ -30,6 +30,8 @@ test('public packaging omits private QA metadata and preserves resources and ver
   const out=path.join(root,'out'); fs.mkdirSync(out);
   const app=packageApp(out,executable,{productVersion:'0.2.0',privatePath:'not for public'},()=>'',signingOptions(),false);
   assert(!fs.existsSync(path.join(app,'Contents/Resources/qa-build.json')));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(app,'Contents/Resources/BrowserExtension/manifest.json'))).name,'Dictionary Lookup');
+  assert(fs.existsSync(path.join(app,'Contents/Resources/BrowserExtension/service-worker.js')));
   assert.match(fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8'),/<string>0\.2\.0<\/string>/);
   assert((await api).auditPublicApp(app).some(file=>file.path.endsWith('EnglishDictionary/oewn-2025.json.gz')));
 });
