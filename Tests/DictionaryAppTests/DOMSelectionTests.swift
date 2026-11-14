@@ -22,14 +22,14 @@ struct DOMSelectionTests {
         document.body.append(frame);await loaded;
         const w=frame.contentWindow,p=w.document.querySelector('p');
         w.getSelection().setBaseAndExtent(p.firstChild,39,p.querySelector('strong').firstChild,2);
-        w.focus();return null;
+        frame.focus();return null;
         """)
         let reply = try await page.captureCurrentSelection()
         let source = "The bank closed. They walked along the bank of the river."
         try await assertFocusedReaderFlow(page, reply: reply, target: "bank", source: source, start: 39,
                                    sentence: "They walked along the bank of the river.")
         // Returning to the parent must not retain the embedded reader's context.
-        _ = try await page.evaluate("window.focus();void 0;")
+        _ = try await page.evaluate("document.getElementById('p').tabIndex=0;document.getElementById('p').focus();void 0;")
         let parent = try await page.capture(start: 4, end: 8)
         #expect(parent["context"] as? String == "The bank approved my loan.")
     }
