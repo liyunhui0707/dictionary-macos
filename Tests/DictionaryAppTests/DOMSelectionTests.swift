@@ -10,6 +10,122 @@ import WebKit
 struct DOMSelectionTests {
     private let paragraph = "The bank approved my loan. We sat on the bank of the river."
 
+    @Test(arguments: ["chromium", "safari"])
+    func focusedEmbeddedReaderUsesItsOwnOccurrenceInsteadOfStaleParent(_ adapter: String) async throws {
+        let page = DOMCapturePage()
+        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+        _ = try await page.capture(start: 4, end: 8)
+        _ = try await page.asyncEvaluate("""
+        const frame=document.createElement('iframe');frame.id='reader';
+        const loaded=new Promise(resolve=>frame.onload=resolve);
+        frame.srcdoc='<p>The bank closed. They walked along the ba<strong>nk</strong> of the river.</p>';
+        document.body.append(frame);await loaded;
+        const w=frame.contentWindow,p=w.document.querySelector('p');
+        w.getSelection().setBaseAndExtent(p.firstChild,39,p.querySelector('strong').firstChild,2);
+        w.focus();return null;
+        """)
+        let reply = try await page.captureCurrentSelection()
+        let source = "The bank closed. They walked along the bank of the river."
+        try await assertFocusedReaderFlow(page, reply: reply, target: "bank", source: source, start: 39,
+                                   sentence: "They walked along the bank of the river.")
+        // Returning to the parent must not retain the embedded reader's context.
+        _ = try await page.evaluate("window.focus();void 0;")
+        let parent = try await page.capture(start: 4, end: 8)
+        #expect(parent["context"] as? String == "The bank approved my loan.")
+    }
+
+    @Test(arguments: ["chromium", "safari"])
+    func inaccessibleOrUnselectedEmbeddedReaderNeverUsesParentSelection(_ adapter: String) async throws {
+        for sandboxed in [false, true] {
+            let page = DOMCapturePage()
+            try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+            _ = try await page.capture(start: 4, end: 8)
+            _ = try await page.asyncEvaluate("""
+            const frame=document.createElement('iframe');
+            \(sandboxed ? "frame.setAttribute('sandbox','');" : "")
+            const loaded=new Promise(resolve=>frame.onload=resolve);
+            frame.srcdoc='<p>They walked along the bank of the river.</p>';
+            document.body.append(frame);await loaded;frame.focus();
+            if(document.activeElement!==frame) throw Error('fixture frame did not receive focus');return null;
+            """)
+            let reply = try await page.captureCurrentSelection()
+            #expect(reply["empty"] as? Bool == true)
+            #expect(reply["target"] == nil)
+        }
+    }
+
+    @Test(arguments: [2, 9], ["chromium", "safari"])
+    func nestedEmbeddedReadersFollowFocusWithinABoundedDepth(_ depth: Int, _ adapter: String) async throws {
+        let page = DOMCapturePage()
+        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+        _ = try await page.capture(start: 4, end: 8)
+        _ = try await page.asyncEvaluate("""
+        let w=window;
+        for(let i=0;i<\(depth);i++) {
+            const f=w.document.createElement('iframe'),loaded=new Promise(resolve=>f.onload=resolve);
+            f.srcdoc='<p>They walked along the bank of the river.</p>';
+            w.document.body.append(f);await loaded;f.focus();w=f.contentWindow;
+        }
+        const n=w.document.querySelector('p').firstChild;
+        w.getSelection().setBaseAndExtent(n,26,n,22);return null;
+        """)
+        let reply = try await page.captureCurrentSelection()
+        if depth == 2 {
+            try await assertFocusedReaderFlow(page, reply: reply, target: "bank", source: "They walked along the bank of the river.",
+                                       start: 22, sentence: "They walked along the bank of the river.")
+        } else {
+            #expect(reply["empty"] as? Bool == true)
+            #expect(reply["reason"] as? String == "frameUnavailable")
+        }
+    }
+
+    @Test(arguments: ["chromium", "safari"])
+    func focusedInputCannotReuseAnOldReadingSelection(_ adapter: String) async throws {
+        let page = DOMCapturePage()
+        try await page.load("<p id='p'>The bank approved my loan.</p><input value='river'>", adapter: adapter)
+        _ = try await page.capture(start: 4, end: 8)
+        _ = try await page.evaluate("document.querySelector('input').focus();void 0;")
+        let reply = try await page.captureCurrentSelection()
+        #expect(reply["empty"] as? Bool == true)
+    }
+
+    @Test(arguments: ["chromium", "safari"], [false, true])
+    func focusChangeDuringEmbeddedCaptureWithholdsTheResult(_ adapter: String, _ withinReader: Bool) async throws {
+        let page = DOMCapturePage()
+        try await page.load("<p id='p'>The bank approved my loan.</p>", adapter: adapter)
+        _ = try await page.asyncEvaluate("""
+        const f=document.createElement('iframe'),loaded=new Promise(resolve=>f.onload=resolve);
+        f.srcdoc='<p>They walked along the bank of the river.</p>';
+        document.body.append(f);await loaded;f.focus();
+        const w=f.contentWindow,n=w.document.querySelector('p').firstChild;
+        w.getSelection().setBaseAndExtent(n,22,n,26);
+        const original=w.getSelection.bind(w);
+        const input=w.document.createElement('input');w.document.body.append(input);
+        w.getSelection=()=>{\(withinReader ? "input.focus();" : "document.getElementById('p').tabIndex=0;document.getElementById('p').focus();")return original();};
+        return null;
+        """)
+        let reply = try await page.captureCurrentSelection()
+        #expect(reply["empty"] as? Bool == true)
+        #expect(reply["reason"] as? String == "sourceChanged")
+    }
+
+    private func assertFocusedReaderFlow(_ page: DOMCapturePage, reply: [String: Any], target: String,
+                                         source: String?, start: Int?, sentence: String?) async throws {
+        if page.adapter != "safari" {
+            try await assertReviewFlow(page, reply: reply, target: target, source: source, start: start, sentence: sentence)
+            return
+        }
+        let payload = try JSONSerialization.data(withJSONObject: reply)
+        let captured = try #require(SafariContextExtractor.decodeReply(String(decoding: payload, as: UTF8.self)))
+        #expect(captured.target == target && captured.context == source && captured.containingSentence == sentence)
+        let request = try LookupRequest.captured(target: captured.target, context: captured.context,
+            sentence: captured.containingSentence, source: "Safari", capture: captured.capture)
+        let document = try providerDocument(request.providerContext)
+        #expect(document["context_text"] as? String == source)
+        let selection = try #require(document["selection"] as? [String: Any])
+        #expect(selection["start"] as? Int == start && selection["text"] as? String == target)
+    }
+
     // R2 remediation: incoming layout state cannot be inferred from C0 alone.
     @Test(arguments: ["\u{202e}", "\u{202b}\u{202e}", "\u{2067}\u{202e}"], [false, true])
     func remediation2BidiBeforeAcquisitionCannotClaimExactSource(_ control: String, crossNode: Bool) async throws {
@@ -805,13 +921,21 @@ final class DOMCapturePage: NSObject, WKNavigationDelegate {
         return try #require(value as? [String: Any])
     }
 
+    func captureCurrentSelection() async throws -> [String: Any] {
+        if adapter == "safari" {
+            let reply = try #require(try await evaluate(SafariContextExtractor.injectionScript) as? String)
+            return try #require(JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
+        }
+        return try #require(try await evaluate("extractSelection()") as? [String: Any])
+    }
+
     func sendThroughWorker(_ payload: [String:Any]) async throws -> String {
         if adapter == "obsidian" { return try #require(try await evaluate("window.postedBody") as? String) }
         let root=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let source=try String(contentsOf:root.appendingPathComponent("extensions/chromium/service-worker.js"),encoding:.utf8)
         let payloadJSON=String(decoding:try JSONSerialization.data(withJSONObject:payload),as:UTF8.self)
         _ = try await evaluate("""
-        chrome.tabs={sendMessage:async()=> (\(payloadJSON))};
+        chrome.tabs={query:async()=>[{id:1}],sendMessage:async()=> (\(payloadJSON))};
         chrome.storage={local:{get:async()=>({token:'disposable-test-only'})}};
         chrome.commands={onCommand:{addListener(){}}};
         window.workerNotices=[]; chrome.notifications={create(n){window.workerNotices.push(n.message);}};

@@ -48,6 +48,78 @@ test('missing selection never sends authenticated translation and sets visible b
     const h=harness({payload:{empty:true}});const r=await vm.runInContext('lookupActiveTab()',h.context);
     assert.equal(r.ok,false);assert.equal(h.calls.length,0);assert.deepEqual(h.badges,['!']);
 });
+function deferred() {
+    let resolve;
+    const promise=new Promise(r=>{resolve=r});
+    return {promise,resolve};
+}
+test('a tab switch while pairing is read cannot submit the previous page',async()=>{
+    const h=harness(), gate=deferred();let active={id:7,url:'https://example.test/river',windowId:1};
+    h.context.chrome.tabs.query=async()=>[active];
+    h.context.chrome.storage.local.get=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',h.context);
+    await new Promise(r=>setImmediate(r));
+    active={id:8,url:'https://example.test/finance',windowId:1};gate.resolve({token:'synthetic-token'});
+    assert.equal((await result).ok,false);assert.equal(h.calls.length,0);assert.equal(h.notifications.length,0);
+});
+test('a navigation in the same tab cannot submit the previous document',async()=>{
+    const h=harness(), gate=deferred();let active={id:7,url:'https://example.test/river',windowId:1};
+    h.context.chrome.tabs.query=async()=>[active];h.context.chrome.tabs.sendMessage=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',h.context);await new Promise(r=>setImmediate(r));
+    active={...active,url:'https://example.test/finance'};gate.resolve({target:'bank',context:'river'});
+    assert.equal((await result).ok,false);assert.equal(h.calls.length,0);
+});
+for (const event of ['reload','tabSwitch','windowSwitch']) {
+    test(`${event} away and back during capture invalidates the old selection`,async()=>{
+        const h=harness(), gate=deferred();let callback;
+        // The same extension API event is used; no simulated DOM/body is read.
+        const events={onActivated:{addListener:f=>{if(event==='tabSwitch') callback=f}},
+            onUpdated:{addListener:f=>{if(event==='reload') callback=f}}};
+        Object.assign(h.context.chrome.tabs,events);
+        h.context.chrome.windows={onFocusChanged:{addListener:f=>{if(event==='windowSwitch') callback=f}}};
+        // Use a fresh VM to avoid redeclaring the worker's lexical bindings.
+        const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+            fetch:async()=>{assert.fail('stale lookup submitted')}});
+        vm.runInContext(worker,context);
+        context.chrome.tabs.sendMessage=()=>gate.promise;
+        const result=vm.runInContext('lookupActiveTab()',context);await new Promise(r=>setImmediate(r));
+        if(event==='reload') callback(7,{status:'loading'});else callback({tabId:8,windowId:2});
+        gate.resolve({target:'bank',context:'river'});
+        assert.equal((await result).ok,false);assert.equal(h.notifications.length,0);
+    });
+}
+test('new lookup supersedes older capture even when it resolves last',async()=>{
+    const h=harness(), old=deferred();let captures=0;
+    h.context.chrome.tabs.sendMessage=()=>++captures===1?old.promise:Promise.resolve({target:'bank',context:'finance'});
+    const first=vm.runInContext('lookupActiveTab()',h.context);await new Promise(r=>setImmediate(r));
+    assert.equal((await vm.runInContext('lookupActiveTab()',h.context)).ok,true);
+    old.resolve({target:'bank',context:'river'});assert.equal((await first).ok,false);
+    assert.equal(h.calls.length,1);assert.equal(JSON.parse(h.calls[0].init.body).context,'finance');
+});
+test('restricted embedded reader explains the boundary without sending parent context',async()=>{
+    const h=harness({payload:{empty:true,reason:'frameUnavailable'}});
+    const result=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(result.ok,false);assert.match(result.message,/嵌入式阅读区/);assert.equal(h.calls.length,0);
+});
+test('Dictionary popup taking focus after submission still reports the completed lookup',async()=>{
+    const h=harness();let focusChanged;
+    h.context.chrome.windows={onFocusChanged:{addListener:f=>{focusChanged=f}}};
+    const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+        fetch:async()=>{focusChanged(-1);return {status:200,ok:true}}});
+    vm.runInContext(worker,context);
+    assert.equal((await vm.runInContext('lookupActiveTab()',context)).ok,true);
+    assert.equal(h.notifications.length,0);
+});
+test('background tab reload does not discard a capture from the current reader',async()=>{
+    const h=harness(), gate=deferred();let updated;
+    h.context.chrome.tabs.onUpdated={addListener:f=>{updated=f}};
+    const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+        fetch:async()=>({status:200,ok:true})});
+    vm.runInContext(worker,context);context.chrome.tabs.sendMessage=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',context);await new Promise(r=>setImmediate(r));
+    updated(99,{status:'loading'});gate.resolve({target:'bank',context:'river'});
+    assert.equal((await result).ok,true);
+});
 for(const status of [401,404,500,503]) {
     test(`failed verification ${status} cannot persist candidate token`,async()=>{
         const h=harness({status});vm.runInContext(options,h.context);h.elements.token.value='candidate-secret';

@@ -5,6 +5,21 @@
 //   4. Mac app shows the popup on success; we surface errors via notifications.
 
 const SERVER_URL = "http://127.0.0.1:49152/v1/translate";
+let lookupGeneration = 0;
+let pendingCapture = null;
+const sourceChanged = () => ({ok:false,message:"查询已取消：来源已变化或已有新查询，请重新选词。"});
+function invalidateCapture() {
+    if (pendingCapture) { lookupGeneration++; pendingCapture = null; }
+}
+
+// Invalidate capture work waiting on browser/storage APIs. Never submit an older
+// selection after a new command, tab switch, window switch or document reload.
+chrome.tabs.onActivated?.addListener(invalidateCapture);
+chrome.tabs.onUpdated?.addListener((id, change) => {
+    if (pendingCapture && id === pendingCapture.tabId &&
+        (change.status === 'loading' || change.url)) invalidateCapture();
+});
+chrome.windows?.onFocusChanged?.addListener(invalidateCapture);
 
 function detectBrowser() {
     const ua = navigator.userAgent || "";
@@ -63,25 +78,43 @@ async function checkConnection() {
     }
 }
 
-async function lookup(tabId) {
+async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:tabId}}) {
+    const current = () => request.generation === lookupGeneration;
+    pendingCapture = {generation:request.generation,tabId};
     // 1. Read selection + paragraph context from the content script.
     let payload;
     try {
-        payload = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_SELECTION" });
+        payload = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_SELECTION" }, {frameId:0});
     } catch (err) {
+        if (!current()) return sourceChanged();
         return report(false, "无法读取此页选词。更新扩展后请刷新网页；浏览器内部页面不支持查词。");
     }
+    if (!current()) return sourceChanged();
     if (!payload || payload.empty) {
+        pendingCapture = null;
+        if (payload?.reason === 'frameUnavailable') {
+            return report(false, "无法读取当前嵌入式阅读区。跨域或受限页面可在 Dictionary 中手动输入单词与语境。");
+        }
         return report(false, "请先在网页正文中选中英文单词。");
     }
 
     // 2. Fetch token.
     const token = await getToken();
+    if (!current()) return sourceChanged();
     if (!token) {
+        pendingCapture = null;
         return report(false, "尚未配对，请打开 Dictionary 扩展设置保存令牌。");
     }
 
-    // 3. POST to the Mac app.
+    const [active] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!current() || active?.id !== tabId ||
+        (request.tab.url !== undefined && active.url !== request.tab.url) ||
+        (request.tab.windowId !== undefined && active.windowId !== request.tab.windowId)) return sourceChanged();
+
+    // 3. POST to the Mac app. No asynchronous gap after the source check.
+    // Dictionary opening its own popup can move window focus after submission;
+    // that must not turn a completed lookup into a spurious cancellation.
+    pendingCapture = null;
     let response;
     try {
         response = await fetch(SERVER_URL, {
@@ -99,8 +132,11 @@ async function lookup(tabId) {
             })
         });
     } catch (err) {
+        if (!current()) return sourceChanged();
         return report(false, "无法连接 Dictionary，请启动 App 后重试。");
     }
+
+    if (!current()) return sourceChanged();
 
     if (response.status === 401) {
         return report(false, "配对已失效，请从当前 Dictionary 重新复制令牌。");
@@ -115,12 +151,18 @@ async function lookup(tabId) {
 }
 
 async function lookupActiveTab() {
+    const generation = ++lookupGeneration;
+    pendingCapture = {generation,tabId:null};
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (generation !== lookupGeneration) return sourceChanged();
         if (!tab?.id) return report(false, "找不到当前网页。");
-        return await lookup(tab.id);
+        return await lookup(tab.id, {generation,tab});
     } catch {
+        if (generation !== lookupGeneration) return sourceChanged();
         return report(false, "扩展查询失败，请重新加载扩展并刷新网页。");
+    } finally {
+        if (pendingCapture?.generation === generation) pendingCapture = null;
     }
 }
 
