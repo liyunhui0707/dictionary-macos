@@ -38,7 +38,7 @@ final class SelectionCaptureController {
             }
             guard attempt.isSourceCurrent() else {
                 diagnostics?.record(QAEvent(kind: .sourceChanged, attemptID: attempt.id))
-                coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.")
+                coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.", issue: .sourceChanged)
                 continue
             }
             let started = ProcessInfo.processInfo.systemUptime
@@ -51,7 +51,7 @@ final class SelectionCaptureController {
                 }
                 guard attempt.isSourceCurrent() else {
                     diagnostics?.record(QAEvent(kind: .sourceChanged, attemptID: attempt.id))
-                    coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.")
+                    coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.", issue: .sourceChanged)
                     continue
                 }
                 var captureDetails = captured.diagnostics
@@ -70,7 +70,7 @@ final class SelectionCaptureController {
                 diagnostics?.record(QAEvent(kind: captureReturned ? .submissionRejected : .captureFailed,
                                             attemptID: attempt.id, details: (error as? CaptureFailure)?.details,
                                             elapsedMilliseconds: Int((ProcessInfo.processInfo.systemUptime - started) * 1000)))
-                coordinator.failCapture(attempt.id, message: error.localizedDescription)
+                coordinator.failCapture(attempt.id, message: error.localizedDescription, issue: SupportIssue.classify(error))
             }
         }
     }

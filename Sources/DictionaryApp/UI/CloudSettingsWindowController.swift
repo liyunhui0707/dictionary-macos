@@ -8,10 +8,12 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let readiness: AppReadiness
     private let serviceSettings: LookupServiceSettings
     private let progress: FirstLookupProgress
+    private let support: SupportDiagnostics
     private let onExample: () -> Void
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
          serviceSettings: LookupServiceSettings? = nil, progress: FirstLookupProgress? = nil,
+         support: SupportDiagnostics? = nil,
          onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings
@@ -19,6 +21,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
         self.progress = progress ?? FirstLookupProgress()
+        self.support = support ?? SupportDiagnostics()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
@@ -34,7 +37,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         let height = min(580, max(240, (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 660) - 80)
         let host = NSHostingController(rootView:
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
-                    readiness: readiness, serviceSettings: serviceSettings, progress: progress,
+                    readiness: readiness, serviceSettings: serviceSettings, progress: progress, support: support,
                     onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
@@ -49,7 +52,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
 }
 
 enum DictionarySettingsSection: String, CaseIterable {
-    case started = "开始使用", general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek"
+    case started = "开始使用", general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek", support = "问题反馈"
 }
 
 @MainActor
@@ -64,17 +67,19 @@ struct DictionarySettingsView: View {
     @ObservedObject var readiness: AppReadiness
     @ObservedObject var serviceSettings: LookupServiceSettings
     @ObservedObject var progress: FirstLookupProgress
+    @ObservedObject var support: SupportDiagnostics
     let onExample: () -> Void
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
          readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil,
-         progress: FirstLookupProgress? = nil, onExample: @escaping () -> Void = {}) {
+         progress: FirstLookupProgress? = nil, support: SupportDiagnostics? = nil, onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
         self.progress = progress ?? FirstLookupProgress()
+        self.support = support ?? SupportDiagnostics()
         _navigation = StateObject(wrappedValue: SettingsNavigation(section))
     }
 
@@ -104,6 +109,9 @@ struct DictionarySettingsView: View {
                     case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
                     case .local: LocalModelSettingsView(settings: localSettings)
                     case .cloud: CloudSettingsView(settings: settings)
+                    case .support: SupportDiagnosticsView(support: support, service: serviceSettings,
+                        local: localSettings, readiness: readiness, onService: { navigation.section = .service },
+                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general })
                     }
                 }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
             }

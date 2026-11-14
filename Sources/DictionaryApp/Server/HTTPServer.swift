@@ -8,18 +8,21 @@ import Network
 final class HTTPServer {
     private let port: UInt16
     private let handler: TranslateHandler
+    private let onState: @Sendable (LocalListenerState) -> Void
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "DictionaryApp.HTTPServer")
 
     /// Allows isolated socket tests to use an OS-assigned port instead of 49152.
     var boundPort: UInt16? { listener?.port?.rawValue }
 
-    init(port: UInt16, handler: TranslateHandler) {
+    init(port: UInt16, handler: TranslateHandler, onState: @escaping @Sendable (LocalListenerState) -> Void = { _ in }) {
         self.port = port
         self.handler = handler
+        self.onState = onState
     }
 
     func start() throws {
+        onState(.starting)
         let params = NWParameters.tcp
         // Bind to 127.0.0.1 explicitly — never to the wildcard. The
         // requiredLocalEndpoint constraint ensures we listen on loopback only.
@@ -32,7 +35,13 @@ final class HTTPServer {
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
         }
-        listener.stateUpdateHandler = { state in
+        listener.stateUpdateHandler = { [onState] state in
+            switch state {
+            case .ready: onState(.listening)
+            case .failed: onState(.unavailable)
+            case .cancelled: onState(.stopped)
+            default: break
+            }
             if case .failed(let error) = state {
                 NSLog("HTTPServer listener failed: \(error)")
             }
