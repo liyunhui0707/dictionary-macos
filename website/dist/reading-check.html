@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第一次阅读查词 · Dictionary</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .reading-check main{max-width:860px;padding:35px 24px 70px}
+    .reading-check h1{font-size:clamp(30px,5vw,44px);letter-spacing:-1px;margin-bottom:18px}
+    .reading-check .intro{color:var(--muted);margin-bottom:32px}
+    .reading-check article{padding:26px;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:#fffefa}
+    .reading-check article h2{font-size:13px;font-weight:500;color:var(--muted);margin:0 0 16px}
+    .reading-check .passage{font:24px/1.7 Georgia,serif;margin:0 0 18px;overflow-wrap:break-word}
+    .reading-check details{font-size:13px;line-height:1.8;color:var(--muted)}
+    .reading-check summary{cursor:pointer;color:var(--green)}
+    .reading-check .help{padding-top:24px;font-size:14px}
+    .reading-check .help a{text-decoration:underline;text-underline-offset:3px}
+    .reading-check .steps{padding-left:22px;font-size:14px;line-height:1.9}
+  </style>
+</head>
+<body class="reading-check">
+  <header>
+    <a class="brand" href="/"><span class="mark">d.</span>Dictionary</a>
+    <nav aria-label="导航"><a href="/">返回官网</a></nav>
+  </header>
+  <main>
+    <h1>选一个词，核对它在这里的意思。</h1>
+    <p class="intro">真正的查询结果会出现在 Dictionary 浮窗。本页只提供练习句子和核对提示，不会自动发起查询。</p>
+    <ol class="steps">
+      <li>保持 Dictionary 运行，浏览器扩展面板应显示“已连接”和实际快捷键。</li>
+      <li>在下面的英文正文中选中指定单词，按 <kbd>⌥ D</kbd>。也可从扩展面板点击“查询当前选词”。</li>
+      <li>核对浮窗里的选词、原句和词义，再回到 App 的“开始使用”确认；切换到另一句继续查词，结果应随语境改变。</li>
+    </ol>
+    <article>
+      <h2>01 · 选中 bank</h2>
+      <p class="passage" lang="en">They walked along the bank of the river.</p>
+      <details><summary>核对词义</summary><p>bank 在这里是“河岸”。浮窗的原句应对应这句河流语境。</p></details>
+    </article>
+    <article>
+      <h2>02 · 换一句，再选 bank</h2>
+      <p class="passage" lang="en">She deposited her savings at the bank.</p>
+      <details><summary>核对词义</summary><p>bank 在这里是“银行”。原句应变成存款语境，不应继续显示上一句河流原文。</p></details>
+    </article>
+    <article>
+      <h2>03 · 可选质量检查：选中 making</h2>
+      <p class="passage" lang="en">Students learn by making mistakes and correcting them.</p>
+      <details><summary>核对词义</summary><p>making mistakes 是“犯错”，making 不应在这里解释为“制作”。某些本地模型在此类搭配中存在已知误译。捕获原句正确与解释正确需要分别核对。</p></details>
+    </article>
+    <article>
+      <h2>04 · 可选质量检查：选中 There</h2>
+      <p class="passage" lang="en">There are two books on the desk.</p>
+      <details><summary>核对词义</summary><p>There 在此引出存在句，表达“有……”，不指地点“那里”。如果原句正确但释义不符，可自行在 App 中更换查词服务；云端服务会发送语境并产生费用。</p></details>
+    </article>
+    <section class="help" aria-label="问题排查">
+      <p>没有浮窗时，先检查扩展连接、快捷键，以及浏览器是否允许在本站使用扩展。有浮窗但查询失败，检查查词服务；只有单词却缺少原句，先不要确认自测完成。</p>
+      <p>以上是少量练习，不代表全部网站、阅读软件或 AI 释义均已验证。</p>
+      <a href="https://github.com/liyunhui0707/dictionary-macos/blob/main/docs/guide.md">打开完整配置与恢复指南 ↗</a>
+    </section>
+  </main>
+</body>
+</html>

@@ -7,6 +7,44 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct NativeAppearanceTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func firstLookupGuidanceAndRecoveryScreens() async throws {
+        let cloud = CloudSettings(store: AppearanceCredentials(), enabled: false,
+            persistEnabled: { _ in }, applyProvider: { _ in })
+        let local = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil),
+            savedModel: nil, probe: AppearanceModelList(names: []), persistModel: { _ in })
+        let service = LookupServiceSettings(saved: "local")
+        let provider = ControlledProvider(), coordinator = LookupCoordinator(provider: provider)
+        let progress = FirstLookupProgress(coordinator: coordinator)
+        await local.check()
+        for scheme in [ColorScheme.light, .dark] {
+            let suffix = scheme == .light ? "light" : "dark"
+            try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .started,
+                serviceSettings: service, progress: progress).frame(width: 580, height: 500),
+                size: NSSize(width: 580, height: 500), scheme: scheme, preview: "first-lookup-missing-\(suffix)") { _ in }
+            try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .local,
+                serviceSettings: service, progress: progress).frame(width: 580, height: 500),
+                size: NSSize(width: 580, height: 500), scheme: scheme, preview: "first-lookup-model-\(suffix)") { _ in }
+        }
+        for channel in [LookupChannel.manual, .selection] {
+            let sentence = "They walked along the bank of the river."
+            let request = channel == .manual ? try LookupRequest.manual(target: "bank", context: sentence)
+                : try LookupRequest.captured(target: "bank", context: sentence, sentence: sentence,
+                    source: "Synthetic Reader", capture: .init(reliability: .heuristic, method: .axTreeWalk))
+            let count = await provider.calls.count
+            let operation = coordinator.submit(request, to: channel)
+            await provider.succeed(await provider.waitForCall("bank", occurrence: count + 1), meaning: "河岸")
+            _ = await operation.value
+        }
+        #expect(progress.confirmReading())
+        for scheme in [ColorScheme.light, .dark] {
+            try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .started,
+                serviceSettings: service, progress: progress).frame(width: 580, height: 500),
+                size: NSSize(width: 580, height: 500), scheme: scheme,
+                preview: "first-lookup-complete-\(scheme == .light ? "light" : "dark")") { _ in }
+        }
+    }
+
     @Test func mainWindowFitsSmallDesktopWithoutTwoPermanentLargeEditors() async throws {
         let provider = ControlledProvider()
         let coordinator = LookupCoordinator(provider: provider)
@@ -200,5 +238,7 @@ private actor AppearanceCredentials: CloudCredentialStore {
 
 private actor AppearanceModelList: OllamaModelListing {
     var calls = 0
-    func models() -> [String] { calls += 1; return ["qwen2.5:7b"] }
+    private let names: [String]
+    init(names: [String] = ["qwen2.5:7b"]) { self.names = names }
+    func models() -> [String] { calls += 1; return names }
 }

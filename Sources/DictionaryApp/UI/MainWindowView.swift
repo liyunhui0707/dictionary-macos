@@ -76,7 +76,7 @@ struct MainWindowView: View {
                                 Text("选择 DeepSeek 云端查词，或使用本机 Ollama。")
                                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Button("设置查词方式", action: onSetup).buttonStyle(.borderedProminent)
+                                Button("开始设置与首查", action: onGettingStarted).buttonStyle(.borderedProminent)
                                     .accessibilityIdentifier("setup-lookup-service")
                             }
                         } else {

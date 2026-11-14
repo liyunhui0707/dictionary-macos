@@ -33,11 +33,16 @@ struct SystemCloudKeychainClient: CloudKeychainClient {
 /// Access is initiated by Save / Enable / Remove or a user cloud query, never by launch or view rendering.
 actor KeychainCloudCredentialStore: CloudCredentialStore {
     private let client: any CloudKeychainClient
-    init(client: any CloudKeychainClient = SystemCloudKeychainClient()) { self.client = client }
+    private let service: String
+    init(client: any CloudKeychainClient = SystemCloudKeychainClient(), isolationID: UUID? = nil) {
+        self.client = client
+        self.service = isolationID.map { "com.liyunhui.DictionaryApp.testing.first-use.\($0.uuidString).cloud.deepseek" }
+            ?? "com.liyunhui.DictionaryApp.cloud.deepseek"
+    }
 
     private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "com.liyunhui.DictionaryApp.cloud.deepseek",
+         kSecAttrService as String: service,
          kSecAttrAccount as String: "api-key",
          kSecUseDataProtectionKeychain as String: false]
     }

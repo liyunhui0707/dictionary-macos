@@ -31,6 +31,8 @@ struct LookupServiceSettingsView: View {
                     Label("Ollama 本地查词", systemImage: "desktopcomputer").font(.system(size: 14, weight: .medium))
                     Text("选词和语境留在本机。需要另外安装并运行 Ollama、准备本地模型；可在「本地模型」检查连接。")
                         .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                    Text("默认本地模型对部分搭配、语法词和未知词有已知质量限制。连接成功或已安装模型不代表释义可靠。")
+                        .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                     Button(settings.selected == .local ? "已选择本地查词" : "使用本地查词") { settings.choose(.local) }
                         .disabled(settings.selected == .local).accessibilityIdentifier("choose-local-service")
                 }

@@ -2,6 +2,8 @@
 
 Buildless static site in `dist/`. No dependencies, analytics, cookies or API keys.
 The interactive bank examples are explicitly labelled illustrations, not live model responses.
+`reading-check.html` provides selectable synthetic reading passages and optional answer hints,
+without simulated popups, scripts or model calls. Actual lookups are initiated through the installed extension.
 Download and update links point to the public repository's Releases page. Do not
 add an installation download or version claim until the matching artifact is published.
 
