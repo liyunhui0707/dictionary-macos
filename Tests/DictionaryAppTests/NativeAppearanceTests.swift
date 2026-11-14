@@ -128,8 +128,38 @@ struct NativeAppearanceTests {
                 serviceSettings: settings).frame(width: 580, height: 580), size: NSSize(width: 580, height: 580),
                 scheme: scheme, preview: "choose-service-\(suffix)") { _ in }
             let updates = ReleaseUpdates(installed: "0.2.0", fetch: { Issue.record("Unexpected update check"); return nil })
-            try await host(ReleaseUpdateView(updates: updates), size: NSSize(width: 460, height: 300),
+            try await host(ReleaseUpdateView(updates: updates), size: NSSize(width: 560, height: 560),
                 scheme: scheme, preview: "updates-\(suffix)") { _ in }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func manualUpdateDownloadAndRecoveryScreens() async throws {
+        let tag = "v1.2.3", name = "Dictionary-1.2.3-macOS-arm64.dmg"
+        let data = try JSONSerialization.data(withJSONObject: ["tag_name": tag,
+            "html_url": "https://github.com/liyunhui0707/dictionary-macos/releases/tag/\(tag)",
+            "draft": false, "prerelease": false,
+            "body": "Synthetic release notes\n[Plain text](https://example.invalid)\n" + String(repeating: "Synthetic compatibility note.\n", count: 120),
+            "assets": [["name": name, "size": 1234, "browser_download_url":
+                "https://github.com/liyunhui0707/dictionary-macos/releases/download/\(tag)/\(name)"]]])
+        let release = try PublicRelease.decode(data)
+        let cases: [(String, String, ReleaseArchitecture)] = [
+            ("available", "1.0.0", .arm64), ("missing-intel", "1.0.0", .x86_64),
+            ("current", "1.2.3", .arm64), ("ahead", "2.0.0", .arm64)
+        ]
+        for (name, installed, architecture) in cases {
+            let updates = ReleaseUpdates(installed: installed, fetch: { release })
+            updates.check()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            while updates.state == .checking && ContinuousClock.now < deadline { await Task.yield() }
+            #expect(updates.state != .checking)
+            for scheme in [ColorScheme.light, .dark] {
+                let suffix = scheme == .light ? "light" : "dark"
+                try await host(ReleaseUpdateView(updates: updates, architecture: architecture),
+                    size: NSSize(width: 560, height: 560), scheme: scheme, preview: "manual-update-\(name)-\(suffix)") { view in
+                        #expect(view.fittingSize.width <= 560 && view.fittingSize.height <= 560)
+                    }
+            }
         }
     }
 

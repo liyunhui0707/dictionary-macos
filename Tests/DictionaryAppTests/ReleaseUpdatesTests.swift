@@ -4,6 +4,12 @@ import Testing
 
 @MainActor
 struct ReleaseUpdatesTests {
+    @Test func hostArchitectureDistinguishesIntelFromRosettaAndUnknown() {
+        #expect(ReleaseArchitecture.host(process: .arm64, translationState: nil) == .arm64)
+        #expect(ReleaseArchitecture.host(process: .x86_64, translationState: 0) == .x86_64)
+        #expect(ReleaseArchitecture.host(process: .x86_64, translationState: 1) == .arm64)
+        #expect(ReleaseArchitecture.host(process: .x86_64, translationState: nil) == nil)
+    }
     @Test func stableVersionsCompareNumericallyAndRejectAmbiguity() throws {
         #expect(try #require(ReleaseVersion("0.10.0")) > #require(ReleaseVersion("v0.2.9")))
         for value in ["0.2", "0.2.0-beta.1", "0.2.0+build", "01.2.0", "0.-1.0", "0.2.0/path", " 0.2.0", "999999999.0.0"] {
@@ -23,6 +29,46 @@ struct ReleaseUpdatesTests {
         #expect(throws: (any Error).self) { try PublicRelease.decode(payload(prerelease: true)) }
         #expect(throws: (any Error).self) { try PublicRelease.decode(Data(repeating: 32, count: 262_145)) }
     }
+    @Test func installersRequireExactVersionArchitectureAndCanonicalAssetURL() throws {
+        let stem = "Dictionary-0.3.0-macOS-"
+        let good = stem + "arm64.dmg"
+        let intel = stem + "x86_64.zip"
+        let assets: [[String: Any]] = [
+            asset(good), asset(intel), asset("SHA256SUMS"),
+            asset(stem + "arm64.zip", url: "https://evil.invalid/installer.zip"),
+            asset("Dictionary-0.2.0-macOS-arm64.zip"),
+            asset("source.zip"),
+            asset(stem + "x86_64.dmg", size: 0)
+        ]
+        let release = try PublicRelease.decode(payload(assets: assets))
+        #expect(release.installer(for: .arm64, format: .dmg)?.name == good)
+        #expect(release.installer(for: .arm64, format: .zip) == nil)
+        #expect(release.installer(for: .x86_64, format: .zip)?.name == intel)
+        #expect(release.installer(for: .x86_64, format: .dmg) == nil)
+        #expect(release.checksums != nil)
+        for url in [
+            "http://github.com/liyunhui0707/dictionary-macos/releases/download/v0.3.0/\(good)",
+            "https://user@github.com/liyunhui0707/dictionary-macos/releases/download/v0.3.0/\(good)",
+            "https://github.com/liyunhui0707/dictionary-macos/releases/download/v0.2.0/\(good)",
+            "https://github.com/liyunhui0707/dictionary-macos/releases/download/v0.3.0/\(good)?token=x",
+            "https://github.com/other/repo/releases/download/v0.3.0/\(good)"
+        ] {
+            let rejected = try PublicRelease.decode(payload(assets: [asset(good, url: url)]))
+            #expect(rejected.installer(for: .arm64, format: .dmg) == nil)
+        }
+        let ambiguous = try PublicRelease.decode(payload(assets: [asset(good), asset(good)]))
+        #expect(ambiguous.installer(for: .arm64, format: .dmg) == nil)
+    }
+    @Test func missingAssetsNeverInventDownloadsAndNotesAreBoundedPlainText() throws {
+        let original = "[Synthetic note](https://example.invalid)\n" + String(repeating: "x", count: 8_000)
+        let release = try PublicRelease.decode(payload(notes: original))
+        #expect(release.installer(for: .arm64, format: .dmg) == nil)
+        #expect(release.installer(for: .x86_64, format: .zip) == nil)
+        #expect(release.checksums == nil)
+        #expect(release.notes.hasPrefix("[Synthetic note](https://example.invalid)"))
+        #expect(release.notes.count <= 6_001)
+        #expect(try PublicRelease.decode(payload(notes: nil)).notes.isEmpty)
+    }
     @Test func noRequestsOnConstructionAndExplicitCheckHandlesAllOutcomes() async throws {
         let source = UpdateSource()
         let updates = ReleaseUpdates(installed: "0.2.0", fetch: { try await source.fetch() })
@@ -37,9 +83,12 @@ struct ReleaseUpdatesTests {
         updates.check(); await source.waitForCall(3)
         await source.fail()
         try await wait { updates.state == .failed }
-        let current = ReleaseUpdates(installed: "0.10.0", fetch: { release })
+        let current = ReleaseUpdates(installed: "0.3.0", fetch: { release })
         current.check()
-        try await wait { current.state == .current }
+        try await wait { current.state == .current(release) }
+        let ahead = ReleaseUpdates(installed: "0.10.0", fetch: { release })
+        ahead.check()
+        try await wait { ahead.state == .ahead(release) }
     }
     @Test func closingWindowRejectsLateCompletionAndCannotStartUnversionedLookup() async throws {
         let source = UpdateSource()
@@ -54,10 +103,29 @@ struct ReleaseUpdatesTests {
         #expect(unversioned.state == .unversioned)
         #expect(await source.calls == 1)
     }
+    @Test func repeatedCheckCannotBeOverwrittenByAnEarlierResponse() async throws {
+        let source = UpdateSource()
+        let updates = ReleaseUpdates(installed: "0.2.0", fetch: { try await source.fetch() })
+        updates.check(); await source.waitForCall(1)
+        updates.check(); await source.waitForCall(2)
+        let release = try PublicRelease.decode(payload())
+        await source.finish(release, call: 2)
+        try await wait { updates.state == .available(release) }
+        await source.finish(nil, call: 1)
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(updates.state == .available(release))
+    }
     private func payload(url: String = "https://github.com/liyunhui0707/dictionary-macos/releases/tag/v0.3.0",
-                         draft: Bool = false, prerelease: Bool = false) throws -> Data {
-        try JSONSerialization.data(withJSONObject: ["tag_name": "v0.3.0", "html_url": url,
-            "draft": draft, "prerelease": prerelease])
+                         draft: Bool = false, prerelease: Bool = false,
+                         notes: String? = nil, assets: [[String: Any]] = []) throws -> Data {
+        var object: [String: Any] = ["tag_name": "v0.3.0", "html_url": url,
+            "draft": draft, "prerelease": prerelease, "assets": assets]
+        object["body"] = notes
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+    private func asset(_ name: String, url: String? = nil, size: Int = 1234) -> [String: Any] {
+        ["name": name, "size": size, "browser_download_url": url ??
+            "https://github.com/liyunhui0707/dictionary-macos/releases/download/v0.3.0/\(name)"]
     }
     private func wait(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -68,14 +136,15 @@ struct ReleaseUpdatesTests {
 
 private actor UpdateSource {
     private(set) var calls = 0
-    private var pending: CheckedContinuation<PublicRelease?, Error>?
+    private var pending: [Int: CheckedContinuation<PublicRelease?, Error>] = [:]
     func fetch() async throws -> PublicRelease? {
         calls += 1
-        return try await withCheckedThrowingContinuation { pending = $0 }
+        let call = calls
+        return try await withCheckedThrowingContinuation { pending[call] = $0 }
     }
     func waitForCall(_ count: Int) async {
         while calls < count { await Task.yield() }
     }
-    func finish(_ release: PublicRelease?) { pending?.resume(returning: release); pending = nil }
-    func fail() { pending?.resume(throwing: URLError(.notConnectedToInternet)); pending = nil }
+    func finish(_ release: PublicRelease?, call: Int? = nil) { pending.removeValue(forKey: call ?? calls)?.resume(returning: release) }
+    func fail() { pending.removeValue(forKey: calls)?.resume(throwing: URLError(.notConnectedToInternet)) }
 }
