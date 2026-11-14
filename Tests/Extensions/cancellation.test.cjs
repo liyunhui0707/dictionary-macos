@@ -10,7 +10,7 @@ test('Chromium accepts 204 without notification or body parsing', async () => {
     const context = vm.createContext({
         navigator: { userAgent: 'Chrome/' }, console,
         chrome: {
-            tabs: { sendMessage: async () => ({ target: 'bank', context: 'river bank' }) },
+            tabs: { query:async()=>[{id:1}], sendMessage: async () => ({ target: 'bank', context: 'river bank' }) },
             storage: { local: { get: async () => ({ token: 'test-token' }) } },
             notifications: { create: async (value) => notifications.push(value) },
             commands: { onCommand: { addListener() {} } }

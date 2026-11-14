@@ -120,12 +120,45 @@ function captureRawText(raw, range, target, edges, crop = null) {
 }
 
 function extractSelection() {
+    // A parent document can retain an old Range while the reader in an iframe
+    // owns focus. Follow only that focus path, never search every frame for text.
+    let view = window;
+    const path = [], documents = [];
+    try {
+        for (let depth = 0; depth < 8; depth++) {
+            const doc = view.document, active = doc.activeElement;
+            documents.push({view,doc,active});
+            if (!['IFRAME','FRAME'].includes(active?.tagName)) {
+                if (['INPUT','TEXTAREA','SELECT'].includes(active?.tagName)) return {empty:true};
+                const reply = extractDocumentSelection(view);
+                if (documents.some(({view,doc,active}) => view.document !== doc || doc.activeElement !== active) || path.some(({doc,frame,child}) =>
+                    doc.activeElement !== frame || !frame.isConnected || frame.contentWindow !== child)) {
+                    return {empty:true,reason:'sourceChanged'};
+                }
+                return reply;
+            }
+            const child = active.contentWindow;
+            if (!child) return {empty:true,reason:'frameUnavailable'};
+            path.push({doc,frame:active,child});
+            // Accessing the next document is intentionally subject to the same
+            // origin policy. No all_frames grant or cross-origin injection.
+            view = child;
+        }
+        return {empty:true,reason:'frameUnavailable'};
+    } catch (_) {
+        return {empty:true,reason:'frameUnavailable'};
+    }
+}
+
+function extractDocumentSelection(window) {
+    const document = window.document, Node = window.Node, NodeFilter = window.NodeFilter;
+    const getComputedStyle = window.getComputedStyle.bind(window);
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount || sel.isCollapsed) return {empty:true};
     const selectedString = sel.toString(), target = captureTrim(selectedString);
     if (!target) return {empty:true};
     const reject = reason => onlyTarget(target,reason);
-    if (sel.rangeCount !== 1 || window.top !== window || target.length > MAX_CONTEXT_CHARS) return reject(target.length > MAX_CONTEXT_CHARS ? 'budgetExceeded' : 'unsupportedStructure');
+    if (sel.rangeCount !== 1 || target.length > MAX_CONTEXT_CHARS) return reject(target.length > MAX_CONTEXT_CHARS ? 'budgetExceeded' : 'unsupportedStructure');
     const original = sel.getRangeAt(0), r = original.cloneRange();
     const snapshot = [r.startContainer,r.startOffset,r.endContainer,r.endOffset];
     if (!snapshot[0].isConnected || !snapshot[2].isConnected || snapshot[0].ownerDocument !== document || snapshot[2].ownerDocument !== document) return reject('sourceChanged');

@@ -125,11 +125,18 @@ test('B2 adapters retain one accepted raw-text and sentence profile without a ru
             "['hidden','clip'].includes(c.overflowX) || ['hidden','clip'].includes(c.overflowY)")
         .replace("            if (!local && (['hidden','clip'].includes(c.overflowX) || ['hidden','clip'].includes(c.overflowY))) {\n                clippedAncestors.push({el,x:c.overflowX!=='visible',y:c.overflowY!=='visible'});\n            }\n",'')
         .replace('function extractFromDOM(root)','function extractSelection()')
+        // Obsidian stays in its selected pane; Chromium now resolves the focused
+        // same-origin document before running this same acquisition algorithm.
+        .replace(' || window.top !== window','')
         .replace('    if (!root?.isConnected || root.ownerDocument!==document) return {empty:true};\n','')
         .replace('    if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return {empty:true};\n','')
         .replace('!block || !root.contains(block) ||','!block ||')
         .replace('!now || !root.isConnected || !root.contains(snapshot[0]) || !root.contains(snapshot[2]) ||','!now ||');
-    assert.equal(restored,chromium.slice(chromium.indexOf('function extractSelection()'),chromium.indexOf('chrome.runtime.onMessage')));
+    const chromiumDocument=chromium.slice(chromium.indexOf('function extractDocumentSelection(window)'),chromium.indexOf('chrome.runtime.onMessage'))
+        .replace('function extractDocumentSelection(window)','function extractSelection()')
+        .replace('    const document = window.document, Node = window.Node, NodeFilter = window.NodeFilter;\n','')
+        .replace('    const getComputedStyle = window.getComputedStyle.bind(window);\n','');
+    assert.equal(restored,chromiumDocument);
 });
 test('B2-A edge trim applies before the target budget without discarding a valid word',async()=>{
     const raw=' '.repeat(2100)+'Bank near the river.';

@@ -48,6 +48,78 @@ test('missing selection never sends authenticated translation and sets visible b
     const h=harness({payload:{empty:true}});const r=await vm.runInContext('lookupActiveTab()',h.context);
     assert.equal(r.ok,false);assert.equal(h.calls.length,0);assert.deepEqual(h.badges,['!']);
 });
+function deferred() {
+    let resolve;
+    const promise=new Promise(r=>{resolve=r});
+    return {promise,resolve};
+}
+test('a tab switch while pairing is read cannot submit the previous page',async()=>{
+    const h=harness(), gate=deferred();let active={id:7,url:'https://example.test/river',windowId:1};
+    h.context.chrome.tabs.query=async()=>[active];
+    h.context.chrome.storage.local.get=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',h.context);
+    await new Promise(r=>setImmediate(r));
+    active={id:8,url:'https://example.test/finance',windowId:1};gate.resolve({token:'synthetic-token'});
+    assert.equal((await result).ok,false);assert.equal(h.calls.length,0);assert.equal(h.notifications.length,0);
+});
+test('a navigation in the same tab cannot submit the previous document',async()=>{
+    const h=harness(), gate=deferred();let active={id:7,url:'https://example.test/river',windowId:1};
+    h.context.chrome.tabs.query=async()=>[active];h.context.chrome.tabs.sendMessage=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',h.context);await new Promise(r=>setImmediate(r));
+    active={...active,url:'https://example.test/finance'};gate.resolve({target:'bank',context:'river'});
+    assert.equal((await result).ok,false);assert.equal(h.calls.length,0);
+});
+for (const event of ['reload','tabSwitch','windowSwitch']) {
+    test(`${event} away and back during capture invalidates the old selection`,async()=>{
+        const h=harness(), gate=deferred();let callback;
+        // The same extension API event is used; no simulated DOM/body is read.
+        const events={onActivated:{addListener:f=>{if(event==='tabSwitch') callback=f}},
+            onUpdated:{addListener:f=>{if(event==='reload') callback=f}}};
+        Object.assign(h.context.chrome.tabs,events);
+        h.context.chrome.windows={onFocusChanged:{addListener:f=>{if(event==='windowSwitch') callback=f}}};
+        // Use a fresh VM to avoid redeclaring the worker's lexical bindings.
+        const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+            fetch:async()=>{assert.fail('stale lookup submitted')}});
+        vm.runInContext(worker,context);
+        context.chrome.tabs.sendMessage=()=>gate.promise;
+        const result=vm.runInContext('lookupActiveTab()',context);await new Promise(r=>setImmediate(r));
+        if(event==='reload') callback(7,{status:'loading'});else callback({tabId:8,windowId:2});
+        gate.resolve({target:'bank',context:'river'});
+        assert.equal((await result).ok,false);assert.equal(h.notifications.length,0);
+    });
+}
+test('new lookup supersedes older capture even when it resolves last',async()=>{
+    const h=harness(), old=deferred();let captures=0;
+    h.context.chrome.tabs.sendMessage=()=>++captures===1?old.promise:Promise.resolve({target:'bank',context:'finance'});
+    const first=vm.runInContext('lookupActiveTab()',h.context);await new Promise(r=>setImmediate(r));
+    assert.equal((await vm.runInContext('lookupActiveTab()',h.context)).ok,true);
+    old.resolve({target:'bank',context:'river'});assert.equal((await first).ok,false);
+    assert.equal(h.calls.length,1);assert.equal(JSON.parse(h.calls[0].init.body).context,'finance');
+});
+test('restricted embedded reader explains the boundary without sending parent context',async()=>{
+    const h=harness({payload:{empty:true,reason:'frameUnavailable'}});
+    const result=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(result.ok,false);assert.match(result.message,/嵌入式阅读区/);assert.equal(h.calls.length,0);
+});
+test('Dictionary popup taking focus after submission still reports the completed lookup',async()=>{
+    const h=harness();let focusChanged;
+    h.context.chrome.windows={onFocusChanged:{addListener:f=>{focusChanged=f}}};
+    const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+        fetch:async()=>{focusChanged(-1);return {status:200,ok:true}}});
+    vm.runInContext(worker,context);
+    assert.equal((await vm.runInContext('lookupActiveTab()',context)).ok,true);
+    assert.equal(h.notifications.length,0);
+});
+test('background tab reload does not discard a capture from the current reader',async()=>{
+    const h=harness(), gate=deferred();let updated;
+    h.context.chrome.tabs.onUpdated={addListener:f=>{updated=f}};
+    const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,
+        fetch:async()=>({status:200,ok:true})});
+    vm.runInContext(worker,context);context.chrome.tabs.sendMessage=()=>gate.promise;
+    const result=vm.runInContext('lookupActiveTab()',context);await new Promise(r=>setImmediate(r));
+    updated(99,{status:'loading'});gate.resolve({target:'bank',context:'river'});
+    assert.equal((await result).ok,true);
+});
 for(const status of [401,404,500,503]) {
     test(`failed verification ${status} cannot persist candidate token`,async()=>{
         const h=harness({status});vm.runInContext(options,h.context);h.elements.token.value='candidate-secret';
@@ -60,4 +132,78 @@ test('verified token is saved only for the expected service; input is cleared wi
     h.elements.token.value='candidate-secret';await vm.runInContext('verifyAndSave()',h.context);
     assert.equal(h.saved().token,'candidate-secret');assert.equal(h.elements.token.value,'');
     assert.ok(h.calls.every(c=>c.url.endsWith('/v1/status')));
+});
+test('shortcut uses the tab supplied by the browser rather than a background current window',async()=>{
+    const h=harness();let captured;
+    h.context.chrome.tabs.sendMessage=async id=>{captured=id;return {target:'bank',context:'river'}};
+    h.context.chrome.tabs.query=async query=>query.lastFocusedWindow?[{id:7,windowId:2,url:'https://example.test/reader'}]:[{id:99,url:'edge://extensions/'}];
+    h.command()('lookup-selection',{id:7,windowId:2,url:'https://example.test/reader'});
+    await new Promise(r=>setImmediate(r));
+    assert.equal(captured,7);assert.equal(h.calls.length,1);
+});
+test('missing receiver reconnects once in the original top frame without changing permissions',async()=>{
+    const h=harness();let attempts=0;const injections=[];
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'https://example.test/reader'}];
+    h.context.chrome.tabs.sendMessage=async()=>{if(++attempts===1)throw Error('Could not establish connection. Receiving end does not exist.');return {target:'bank',context:'river'}};
+    h.context.chrome.scripting={executeScript:async options=>injections.push(options)};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(r.ok,true);assert.equal(attempts,2);assert.equal(injections.length,1);
+    assert.deepEqual(JSON.parse(JSON.stringify(injections[0])),{target:{tabId:7,frameIds:[0]},files:['content.js']});
+    assert.equal(h.calls.length,1);
+});
+test('browser denial during reconnect is explicit, bounded, and never sends a lookup',async()=>{
+    const h=harness();let attempts=0,injections=0;
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'https://example.test/reader'}];
+    h.context.chrome.tabs.sendMessage=async()=>{attempts++;throw Error('Receiving end does not exist.');};
+    h.context.chrome.scripting={executeScript:async()=>{injections++;throw Error('Cannot access contents of url: SECRET_PRIVATE_PAGE. Missing host permission.');}};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(r.ok,false);assert.match(r.message,/CAPTURE_ACCESS_DENIED/);assert.ok(!r.message.includes('SECRET_PRIVATE_PAGE'));
+    assert.equal(attempts,1);assert.equal(injections,1);assert.equal(h.calls.length,0);
+});
+test('internal pages never receive recovery injection',async()=>{
+    const h=harness();let injections=0;
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'edge://extensions/'}];
+    h.context.chrome.tabs.sendMessage=async()=>{throw Error('Receiving end does not exist.');};
+    h.context.chrome.scripting={executeScript:async()=>{injections++}};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(r.ok,false);assert.equal(injections,0);assert.equal(h.calls.length,0);
+});
+test('failed reconnect does not keep retrying and raw transport errors stay private',async()=>{
+    const h=harness();let attempts=0,injections=0;
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'https://example.test/reader'}];
+    h.context.chrome.tabs.sendMessage=async()=>{attempts++;throw Error('Receiving end does not exist. SECRET_INTERNAL_DETAIL');};
+    h.context.chrome.scripting={executeScript:async()=>{injections++}};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(r.ok,false);assert.match(r.message,/CAPTURE_NO_RECEIVER/);assert.ok(!r.message.includes('SECRET_INTERNAL_DETAIL'));
+    assert.equal(attempts,2);assert.equal(injections,1);assert.equal(h.calls.length,0);
+});
+test('changing source during receiver recovery prevents recapture and credential access',async()=>{
+    const h=harness(), gate=deferred();let activated,attempts=0,credentials=0;
+    h.context.chrome.tabs.onActivated={addListener:f=>{activated=f}};
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'https://example.test/reader'}];
+    h.context.chrome.tabs.sendMessage=async()=>{attempts++;throw Error('Receiving end does not exist.');};
+    h.context.chrome.storage.local.get=async()=>{credentials++;return {token:'synthetic-token'}};
+    h.context.chrome.scripting={executeScript:()=>gate.promise};
+    const context=vm.createContext({chrome:h.context.chrome,navigator:{userAgent:'Edg/'},console,AbortSignal,fetch:async()=>assert.fail('stale submit')});
+    vm.runInContext(worker,context);
+    const result=vm.runInContext('lookupActiveTab()',context);await new Promise(r=>setImmediate(r));
+    activated({tabId:8});gate.resolve([]);
+    assert.equal((await result).ok,false);assert.equal(attempts,1);assert.equal(credentials,0);
+});
+test('an interrupted response is not treated as a missing receiver or reinjected',async()=>{
+    const h=harness();let injections=0;
+    h.context.chrome.tabs.query=async()=>[{id:7,url:'https://example.test/reader'}];
+    h.context.chrome.tabs.sendMessage=async()=>{throw Error('The message port closed before a response was received. SECRET_PAGE');};
+    h.context.chrome.scripting={executeScript:async()=>{injections++}};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(r.ok,false);assert.match(r.message,/CAPTURE_CONNECTION_CLOSED/);assert.ok(!r.message.includes('SECRET_PAGE'));
+    assert.equal(injections,0);assert.equal(h.calls.length,0);
+});
+test('an omitted tab URL does not substitute for the browser permission decision',async()=>{
+    const h=harness();let injections=0;
+    h.context.chrome.tabs.query=async()=>[{id:7}];
+    h.context.chrome.tabs.sendMessage=async()=>{throw Error('Receiving end does not exist.');};
+    h.context.chrome.scripting={executeScript:async()=>{injections++;throw Error('Missing host permission');}};
+    const r=await vm.runInContext('lookupActiveTab()',h.context);
+    assert.equal(injections,1);assert.equal(r.ok,false);assert.match(r.message,/CAPTURE_ACCESS_DENIED/);assert.equal(h.calls.length,0);
 });

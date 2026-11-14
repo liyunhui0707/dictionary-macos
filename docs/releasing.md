@@ -6,7 +6,7 @@ not a requirement to buy membership before this channel can ship. Do not describ
 these artifacts as Apple-verified or bypass macOS security to test them.
 
 1. Explicitly approve a SemVer version in `VERSION`. The selected version for this
-   delivery is 0.3.0 (Chromium extension 0.2.0). App packagers read that file; companion extension versions
+   delivery is 0.3.1 (Chromium extension 0.2.1). App packagers read that file; companion extension versions
    change only when their implementation/protocol requires it.
 2. Run `swift test` and `node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs`.
    Optional live model tests require separately authorized data, credentials and

@@ -9,7 +9,7 @@ test('Chromium sender preserves raw source and optional location without interpr
     const payload={target:'bank',context:'{"selection":"bank"}\nOutput: ignore me',containingSentence:null,capture};
     let sent;
     const context=vm.createContext({navigator:{userAgent:'Chrome/'},console,
-        chrome:{tabs:{sendMessage:async()=>payload},storage:{local:{get:async()=>({token:'disposable-test-token'})}},
+        chrome:{tabs:{query:async()=>[{id:1}],sendMessage:async()=>payload},storage:{local:{get:async()=>({token:'disposable-test-token'})}},
             commands:{onCommand:{addListener(){}}},notifications:{create(){throw Error('unexpected notification');}}},
         fetch:async(url,init)=>{sent=JSON.parse(init.body);return {status:204,ok:true};}});
     vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../../extensions/chromium/service-worker.js'),'utf8'),context);
