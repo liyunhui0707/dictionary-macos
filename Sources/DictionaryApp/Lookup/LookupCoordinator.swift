@@ -62,12 +62,15 @@ final class LookupCoordinator: ObservableObject {
     let selectionCloud: CloudAssistanceState
     private var provider: TranslationProvider
     private let targetLanguage: String
+    private let support: SupportDiagnostics?
     private var active: [LookupChannel: LookupOperation] = [:]
 
     // Selection intent includes native capture, before there is a validated request.
     private(set) var selectionIntent = UUID()
 
-    init(provider: TranslationProvider, targetLanguage: String = "简体中文", cloudProvider: TranslationProvider? = nil) {
+    init(provider: TranslationProvider, targetLanguage: String = "简体中文", cloudProvider: TranslationProvider? = nil,
+         support: SupportDiagnostics? = nil) {
+        self.support = support
         manualCloud = CloudAssistanceState(provider: cloudProvider, language: targetLanguage)
         selectionCloud = CloudAssistanceState(provider: cloudProvider, language: targetLanguage)
         self.provider = provider
@@ -93,6 +96,7 @@ final class LookupCoordinator: ObservableObject {
         primaryLabel = label
         primaryIsCloud = isCloud
         configurationID = UUID()
+        support?.resetLookups()
     }
 
     @discardableResult
@@ -101,23 +105,27 @@ final class LookupCoordinator: ObservableObject {
         cancelActive(channel)
         let operation = LookupOperation(request: request)
         active[channel] = operation
+        support?.begin(channel)
         publish(.loading(request), to: channel)
         let provider = self.provider
         let language = targetLanguage
         operation.start(Task { [weak self, weak operation] in
             let outcome: LookupOutcome
+            var supportIssue: SupportIssue?
             do {
                 try Task.checkCancellation()
                 let translation = try await provider.translate(target: request.target, context: request.providerContext,
                                                                containingSentence: request.containingSentence, targetLanguage: language)
                 outcome = .success(LookupResult(request: request, translation: translation))
             } catch {
+                supportIssue = SupportIssue.classify(error)
                 outcome = .failure(error.localizedDescription, rawOutput: (error as? TranslationError)?.rawOutput)
             }
             guard let self, let operation, self.active[channel]?.id == operation.id else { return }
             self.active[channel] = nil
             if channel == .manual, let result = outcome.result { self.lastManualResult = result }
             self.cloud(for: channel).prepare(request)
+            self.support?.finished(request, outcome: outcome, issue: supportIssue, channel: channel)
             self.publish(.finished(request, outcome), to: channel)
             operation.resolve(outcome)
         })
@@ -129,11 +137,13 @@ final class LookupCoordinator: ObservableObject {
         if channel == .selection { selectionIntent = UUID() }
         guard let operation = active[channel] else { return }
         cancelActive(channel)
+        support?.cancelled(channel)
         publish(.finished(operation.request, .cancelled), to: channel)
     }
 
     func dismissSelection() {
         cancel(.selection)
+        support?.cancelCapture()
         selection = .idle
     }
 
@@ -153,6 +163,7 @@ final class LookupCoordinator: ObservableObject {
         selectionCloud.prepare(nil)
         cancelActive(.selection)
         selectionIntent = UUID()
+        support?.begin(.selection, capturing: true)
         return selectionIntent
     }
 
@@ -164,8 +175,9 @@ final class LookupCoordinator: ObservableObject {
         start(request, to: .selection)
     }
 
-    func failCapture(_ intent: UUID, message: String) {
+    func failCapture(_ intent: UUID, message: String, issue: SupportIssue = .captureUnavailable) {
         guard isCurrentCapture(intent) else { return }
+        support?.captureFailed(issue)
         let request = LookupRequest(target: "", context: nil, containingSentence: nil, source: "Selection")
         selection = .finished(request, .failure(message, rawOutput: nil))
     }

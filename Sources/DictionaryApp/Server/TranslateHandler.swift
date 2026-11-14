@@ -6,10 +6,12 @@ import Foundation
 final class TranslateHandler {
     private let tokenStore: TokenStore
     private let coordinator: LookupCoordinator
+    private let support: SupportDiagnostics?
 
-    init(tokenStore: TokenStore, coordinator: LookupCoordinator) {
+    init(tokenStore: TokenStore, coordinator: LookupCoordinator, support: SupportDiagnostics? = nil) {
         self.tokenStore = tokenStore
         self.coordinator = coordinator
+        self.support = support
     }
 
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
@@ -34,7 +36,10 @@ final class TranslateHandler {
         }
 
         // Pairing checks must not call the model, supersede a lookup or show a popup.
-        if isStatus { return .json(status: 200, ["service": "dictionary", "protocol": 1]) }
+        if isStatus {
+            support?.authenticatedCheck()
+            return .json(status: 200, ["service": "dictionary", "protocol": 1])
+        }
 
         // 3. Decode body.
         let payload: TranslatePayload
@@ -59,6 +64,7 @@ final class TranslateHandler {
         } catch {
             return .json(status: 400, ["error": error.localizedDescription])
         }
+        support?.extensionLookup()
         let outcome = await coordinator.submit(input, to: .selection).value
         let translation: Translation
         switch outcome {

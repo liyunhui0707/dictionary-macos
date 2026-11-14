@@ -8,6 +8,29 @@ import Testing
 @Suite(.serialized)
 struct NativeAppearanceTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func supportDiagnosticsAndReportScreens() async throws {
+        let support = SupportDiagnostics()
+        support.listenerChanged(.unavailable)
+        support.captureFailed(.permissionRequired)
+        let cloud = CloudSettings(store: AppearanceCredentials(), enabled: false,
+            persistEnabled: { _ in }, applyProvider: { _ in })
+        let local = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil),
+            savedModel: nil, probe: AppearanceModelList(), persistModel: { _ in })
+        let service = LookupServiceSettings(saved: "local"), readiness = AppReadiness.preview()
+        let text = try support.report(version: "0.4.0", service: service, local: local, readiness: readiness).text()
+        for scheme in [ColorScheme.light, .dark] {
+            let suffix = scheme == .light ? "light" : "dark"
+            try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .support,
+                serviceSettings: service, support: support).frame(width: 580, height: 500),
+                size: NSSize(width: 580, height: 500), scheme: scheme, preview: "support-\(suffix)") { view in
+                    #expect(view.fittingSize.width <= 580 && view.fittingSize.height <= 500)
+                }
+            try await host(SupportReportPreview(text: text).frame(width: 480, height: 430),
+                size: NSSize(width: 480, height: 430), scheme: scheme, preview: "support-report-\(suffix)") { _ in }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
     func firstLookupGuidanceAndRecoveryScreens() async throws {
         let cloud = CloudSettings(store: AppearanceCredentials(), enabled: false,
             persistEnabled: { _ in }, applyProvider: { _ in })
@@ -130,7 +153,7 @@ struct NativeAppearanceTests {
             try await host(MainWindowView(state: draft, coordinator: coordinator), size: NSSize(width: 860, height: 680),
                            scheme: scheme, preview: "home-\(suffix)") { _ in }
             for section in DictionarySettingsSection.allCases {
-                let name = section == .general ? "general" : section == .local ? "local" : section == .service ? "service" : "cloud"
+                let name = String(describing: section)
                 try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: section)
                     .frame(width: 580, height: 580), size: NSSize(width: 580, height: 580), scheme: scheme, preview: "settings-\(name)-\(suffix)") { _ in }
             }

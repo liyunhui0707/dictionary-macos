@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let selectionReader = SelectionReader()
     private let safariContextExtractor = SafariContextExtractor()
     private let diagnostics = QADiagnostics.forCurrentProcess()
+    private let support = SupportDiagnostics()
     private lazy var popupController = PopupController(coordinator: coordinator, diagnostics: diagnostics)
     private let hotkey = GlobalHotkey()
     private let provider: TranslationProvider
@@ -23,7 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var localSettings = LocalModelSettings(configuration: localConfiguration,
         savedModel: preferences.string(forKey: LocalModelConfiguration.modelPreference),
         persistModel: { [weak self] in self?.preferences.set($0, forKey: LocalModelConfiguration.modelPreference) })
-    private lazy var coordinator = LookupCoordinator(provider: UnconfiguredLookupProvider(cloudDisabled: false), targetLanguage: targetLanguage)
+    private lazy var coordinator = LookupCoordinator(provider: UnconfiguredLookupProvider(cloudDisabled: false), targetLanguage: targetLanguage,
+        support: support)
     private lazy var firstLookupProgress = FirstLookupProgress(coordinator: coordinator)
     private lazy var cloudSettings = CloudSettings(store: cloudCredentialStore,
         enabled: preferences.bool(forKey: CloudSettings.enabledPreference),
@@ -36,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updateWindow = ReleaseUpdateWindow(installed:
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
-        readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress,
+        readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress, support: support,
         onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
@@ -196,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in self?.performLookup() }
             }
             diagnostics?.record(QAEvent(kind: .hotkeyRegistration, statusCode: status))
+            support.hotkeyRegistered(status == 0)
         }
     }
 
@@ -207,13 +210,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let handler = TranslateHandler(
             tokenStore: tokenStore,
-            coordinator: coordinator
+            coordinator: coordinator, support: support
         )
-        let server = HTTPServer(port: Self.httpPort, handler: handler)
+        let server = HTTPServer(port: Self.httpPort, handler: handler) { [weak support] state in
+            DispatchQueue.main.async { support?.listenerChanged(state) }
+        }
         do {
             try server.start()
             httpServer = server
         } catch {
+            DispatchQueue.main.async { [weak support] in support?.listenerChanged(.unavailable) }
             NSLog("Dictionary HTTP server failed to start on port \(Self.httpPort): \(error)")
         }
     }
@@ -227,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "打开 Dictionary", action: #selector(openDictionary), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "诊断与反馈…", action: #selector(openSupport), keyEquivalent: ""))
         if QABuildIdentity.current != nil {
             menu.addItem(NSMenuItem(title: "QA Build & Diagnostics…", action: #selector(showQADiagnostics), keyEquivalent: ""))
         }
@@ -264,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindowController.open()
     }
     @objc private func openGettingStarted() { cloudSettingsWindow.open(section: .started) }
+    @objc private func openSupport() { cloudSettingsWindow.open(section: .support) }
 
     @objc private func showQADiagnostics() {
         let alert = NSAlert()
@@ -286,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(showAboutDictionary), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ","))
+        application.addItem(NSMenuItem(title: "诊断与反馈…", action: #selector(openSupport), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "查看更新与下载…", action: #selector(openReleaseDownloads), keyEquivalent: ""))
         application.addItem(.separator())
