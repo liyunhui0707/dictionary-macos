@@ -5,6 +5,7 @@ struct MainWindowView: View {
     @ObservedObject var state: ManualLookupState
     @ObservedObject var coordinator: LookupCoordinator
     var onSettings: () -> Void = {}
+    var onGettingStarted: () -> Void = {}
     @ObservedObject var readiness: AppReadiness = .preview()
     @ObservedObject var serviceSettings: LookupServiceSettings = .preview()
     var onSetup: () -> Void = {}
@@ -36,6 +37,7 @@ struct MainWindowView: View {
                     }.buttonStyle(.plain).foregroundStyle(DictionaryStyle.secondary)
                         .padding(.horizontal, 10).accessibilityIdentifier("selection-permission-settings")
                 }
+                Button("开始使用", action: onGettingStarted).buttonStyle(.plain).font(.system(size: 12)).padding(.horizontal, 10)
                 Button(action: onSettings) { Label("偏好设置", systemImage: "slider.horizontal.3") }
                     .buttonStyle(.plain).font(.system(size: 13)).padding(10)
                     .accessibilityIdentifier("open-settings")

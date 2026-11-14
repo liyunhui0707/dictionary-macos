@@ -48,7 +48,7 @@ function main() {
   const tar=path.join(scratch,'source.tar');
   // SwiftPM resolves every declared target even when only building the product.
   // Tests must exist in the build checkout; they are never copied into the App.
-  run('/usr/bin/git',['archive','--format=tar','--output='+tar,'HEAD','Package.swift','VERSION','Sources','Tests','LICENSE','THIRD_PARTY_NOTICES.md']);
+  run('/usr/bin/git',['archive','--format=tar','--output='+tar,'HEAD','Package.swift','VERSION','Sources','Tests','LICENSE','THIRD_PARTY_NOTICES.md','extensions/chromium']);
   run('/usr/bin/tar',['-xf',tar,'-C',source]);
   const args=['swift','build','-c','release','--package-path',source,'--scratch-path',path.join(scratch,'scratch')];
   console.log('Building committed '+commit+' for '+arch+'; private build log in output directory.');
@@ -59,7 +59,7 @@ function main() {
   const stripped=path.join(scratch,'DictionaryApp'); fs.copyFileSync(bin,stripped);
   run('/usr/bin/strip',['-S',stripped]); fs.copyFileSync(stripped,bin);
   const stage=path.join(out,'image'); fs.mkdirSync(stage);
-  const app=packageApp(stage,bin,{productVersion:version},run,signingOptions(),false);
+  const app=packageApp(stage,bin,{productVersion:version},run,signingOptions(),false,path.join(source,'extensions/chromium'));
   const notices=path.join(app,'Contents/Resources/Notices'); fs.mkdirSync(notices);
   for(const name of ['LICENSE','THIRD_PARTY_NOTICES.md']) fs.copyFileSync(path.join(source,name),path.join(notices,name));
   run('/usr/bin/codesign',['--force','--sign','-',app]);

@@ -5,7 +5,6 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let selectionReader = SelectionReader()
-    private let contextExtractor = ContextExtractor()
     private let safariContextExtractor = SafariContextExtractor()
     private let diagnostics = QADiagnostics.forCurrentProcess()
     private lazy var popupController = PopupController(coordinator: coordinator, diagnostics: diagnostics)
@@ -35,15 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updateWindow = ReleaseUpdateWindow(installed:
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
-        readiness: readiness, serviceSettings: serviceSettings)
+        readiness: readiness, serviceSettings: serviceSettings, onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
-        onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) })
+        onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) },
+        onGettingStarted: { [weak self] in self?.openGettingStarted() })
     private lazy var captureController = SelectionCaptureController(coordinator: coordinator, diagnostics: diagnostics)
-    private lazy var capturePipeline = NativeCapturePipeline(isTrusted: { AXIsProcessTrusted() },
-        safari: { [self] in safariContextExtractor.extract() },
-        ax: { [self] in contextExtractor.extractReport() },
-        clipboard: { [self] in try await selectionReader.readSelectionResult() })
     private let targetLanguage = "简体中文"
     private let tokenStore = TokenStore()
     private var httpServer: HTTPServer?
@@ -215,6 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "打开 Dictionary", action: #selector(openDictionary), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ""))
         if QABuildIdentity.current != nil {
             menu.addItem(NSMenuItem(title: "QA Build & Diagnostics…", action: #selector(showQADiagnostics), keyEquivalent: ""))
@@ -248,6 +245,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openDictionary() { mainWindowController.open() }
     @objc private func openSettings() { cloudSettingsWindow.open() }
+    private func prepareExample() {
+        _ = mainWindowController.lookupState.prepareExample()
+        mainWindowController.open()
+    }
+    @objc private func openGettingStarted() { cloudSettingsWindow.open(section: .started) }
 
     @objc private func showQADiagnostics() {
         let alert = NSAlert()
@@ -268,6 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let application = NSMenu()
         application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(showAboutDictionary), keyEquivalent: ""))
+        application.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ","))
         application.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "查看更新与下载…", action: #selector(openReleaseDownloads), keyEquivalent: ""))
@@ -321,8 +324,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               source.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
         captureController.start(source: source.localizedName ?? "Selection", sourcePID: source.processIdentifier,
                                 sourceBundleID: source.bundleIdentifier, isSourceCurrent: {
-            NSWorkspace.shared.frontmostApplication?.processIdentifier == source.processIdentifier
-        }) { [self] in try await captureTargetAndContext() }
+            !source.isTerminated && NSWorkspace.shared.frontmostApplication?.processIdentifier == source.processIdentifier
+        }) { [self] in try await captureTargetAndContext(source: source) }
     }
 
     /// Capture strategy, in order:
@@ -334,9 +337,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///    and most native Cocoa text views.
     /// 3. **Pasteboard fallback** — simulated ⌘C for apps that expose
     ///    neither AX text nor JavaScript (Electron apps, some PDFs).
-    private func captureTargetAndContext() async throws -> CapturedContext {
-        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        return try await capturePipeline.capture(isSafari: Self.safariBundleIDs.contains(bundleID),
-                                                isBooks: bundleID == "com.apple.iBooksX")
+    private func captureTargetAndContext(source: NSRunningApplication) async throws -> CapturedContext {
+        let extractor = ContextExtractor(sourceApplication: AXUIElementCreateApplication(source.processIdentifier))
+        let pipeline = NativeCapturePipeline(isTrusted: { AXIsProcessTrusted() },
+            safari: { [self] in safariContextExtractor.extract() }, ax: { extractor.extractReport() },
+            clipboard: { [self] in try await selectionReader.readSelectionResult() },
+            isSourceCurrent: { !source.isTerminated && NSWorkspace.shared.frontmostApplication?.processIdentifier == source.processIdentifier })
+        let bundleID = source.bundleIdentifier ?? ""
+        return try await pipeline.capture(isSafari: Self.safariBundleIDs.contains(bundleID),
+                                          isBooks: bundleID == "com.apple.iBooksX")
     }
 }

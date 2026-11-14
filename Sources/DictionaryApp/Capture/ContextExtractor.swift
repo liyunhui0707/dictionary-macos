@@ -12,26 +12,40 @@ struct CapturedContext {
 }
 
 final class ContextExtractor {
+    private let sourceApplication: AXUIElement?
     private let readAttribute: (AXUIElement, AXAttribute) -> AXRead
     private let bundleIdentifier: (AXUIElement) -> String?
+    private let readParameter: (AXUIElement, AXParameterizedAttribute, CFTypeRef) -> AXRead
+    private let markerEndpoint: (CFTypeRef, AXTextMarkerEndpoint) -> CFTypeRef?
     private var details = CaptureDetails()
     private var booksSelection: BooksSelectionReader.Selection?
+    private var webSelection: AXWebSelectionReader.Selection?
+    private var focus: CaptureFocus?
 
-    init(readAttribute: @escaping (AXUIElement, AXAttribute) -> AXRead = AXRead.live,
+    init(sourceApplication: AXUIElement? = nil,
+         readAttribute: @escaping (AXUIElement, AXAttribute) -> AXRead = AXRead.live,
+         readParameter: @escaping (AXUIElement, AXParameterizedAttribute, CFTypeRef) -> AXRead = AXParameterizedAttribute.live,
+         markerEndpoint: @escaping (CFTypeRef, AXTextMarkerEndpoint) -> CFTypeRef? = AXTextMarkerEndpoint.live,
          bundleIdentifier: @escaping (AXUIElement) -> String? = { app in
              var pid: pid_t = 0
              guard AXUIElementGetPid(app, &pid) == .success else { return nil }
              return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
          }) {
+        self.sourceApplication = sourceApplication
         self.readAttribute = readAttribute
+        self.readParameter = readParameter
+        self.markerEndpoint = markerEndpoint
         self.bundleIdentifier = bundleIdentifier
     }
 
     func extractReport() -> CaptureReport {
         details = CaptureDetails()
         booksSelection = nil
+        webSelection = nil
+        focus = nil
         let captured = extract()
-        return CaptureReport(captured: captured, details: details, booksSelection: booksSelection)
+        return CaptureReport(captured: captured, details: details, booksSelection: booksSelection,
+                             webSelection: webSelection, focus: focus)
     }
 
     private func read(_ element: AXUIElement, _ attribute: AXAttribute) -> CFTypeRef? {
@@ -60,15 +74,16 @@ final class ContextExtractor {
     /// as context, which is no worse than the pasteboard fallback.
     func extract() -> CapturedContext? {
         let system = AXUIElementCreateSystemWide()
-        guard let app = focusedElementAttribute(system, .focusedApplication),
+        guard let app = application(in: system),
               let element = focusedElementAttribute(app, .focusedUIElement) else { return nil }
+        focus = CaptureFocus(application: app, element: element)
         if bundleIdentifier(app) == "com.apple.iBooksX",
            let role = copyStringAttribute(element, .role),
            ["AXGroup", "AXWebArea", "AXStaticText"].contains(role) {
             let reader = BooksSelectionReader(read: readAttribute)
             guard let first = reader.selection(in: element),
                   let second = reader.selection(in: element), BooksSelectionReader.matches(first, second),
-                  let currentApp = focusedElementAttribute(system, .focusedApplication), CFEqual(app, currentApp),
+                  let currentApp = application(in: system), CFEqual(app, currentApp),
                   let currentElement = focusedElementAttribute(app, .focusedUIElement), CFEqual(element, currentElement) else {
                 details.add(CaptureIssue(code: .contextUnavailable))
                 return nil
@@ -87,6 +102,8 @@ final class ContextExtractor {
         }
 
         let target = readSelectedText(from: element)
+        if target == nil || target?.isEmpty == true,
+           let captured = extractWebSelection(system: system, app: app, focused: element) { return captured }
         guard let target else { return nil }
         guard !target.isEmpty else {
             details.add(CaptureIssue(code: .noSelection, attribute: .selectedText)); return nil
@@ -115,13 +132,15 @@ final class ContextExtractor {
             }
             return targetOnly(target, reason: .rangeMismatch)
         }
+        // A readable selected word does not imply that numeric context is exposed.
+        if let captured = extractWebSelection(system: system, app: app, focused: element) { return captured }
         return extractByTreeWalk(focused: element, target: target)
     }
 
     /// Pure reconciliation of already-read evidence. The copied word determines
-    /// the target; native offsets are not reused. Call only after the same node
-    /// and full text have been observed before and after the copy.
-    static func contextForCopiedBooksTarget(_ target: String, text: String) -> CapturedContext {
+    /// the target; native offsets are not reused. The pipeline separately checks
+    /// source stability and, for web markers, that copy agrees with the selection.
+    static func contextForCopiedNativeTarget(_ target: String, text: String) -> CapturedContext {
         let extractor = ContextExtractor()
         guard text.utf16.count <= extractor.treeWalkBudget else {
             return extractor.targetOnly(target, reason: .budgetExceeded)
@@ -134,6 +153,40 @@ final class ContextExtractor {
         guard result.capture?.reliability == .anchored else { return result }
         return CapturedContext(target: target, context: result.context, containingSentence: result.containingSentence,
             capture: .init(reliability: .heuristic, method: .axRange, reason: result.capture?.reason))
+    }
+
+    /// WebKit readers may focus a toolbar while the iframe selection is exposed
+    /// only by opaque text markers. Never search beyond the closest web area.
+    private func extractWebSelection(system: AXUIElement, app: AXUIElement,
+                                     focused: AXUIElement) -> CapturedContext? {
+        var current = focused
+        var seen: [AXUIElement] = []
+        for _ in 0..<maxAncestorHops {
+            guard !seen.contains(where: { CFEqual($0, current) }),
+                  let role = copyStringAttribute(current, .role) else { return nil }
+            seen.append(current)
+            if role == "AXWebArea" {
+                let reader = AXWebSelectionReader(read: readAttribute, parameter: readParameter, endpoint: markerEndpoint)
+                guard let first = reader.selection(in: current),
+                      let second = reader.selection(in: current), AXWebSelectionReader.matches(first, second),
+                      let currentApp = application(in: system), CFEqual(app, currentApp),
+                      let currentFocus = focusedElementAttribute(app, .focusedUIElement), CFEqual(focused, currentFocus) else { return nil }
+                webSelection = second
+                details.strategy = .axTreeWalk
+                // NativeCapturePipeline must independently copy-confirm this target.
+                return Self.contextForCopiedNativeTarget(second.target, text: second.text)
+            }
+            guard ["AXToolbar", "AXButton", "AXGroup", "AXScrollArea", "AXStaticText"].contains(role),
+                  let next = parent(of: current) else { return nil }
+            current = next
+        }
+        return nil
+    }
+
+    /// The shortcut caller already knows its source PID. When supplied, the
+    /// pipeline must keep that source current for the entire capture attempt.
+    private func application(in system: AXUIElement) -> AXUIElement? {
+        sourceApplication ?? focusedElementAttribute(system, .focusedApplication)
     }
 
     private func targetOnly(_ target: String, method: CaptureMethod = .axRange, reason: CaptureReason) -> CapturedContext {

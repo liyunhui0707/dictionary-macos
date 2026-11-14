@@ -6,6 +6,32 @@ enum AXAttribute: String, Codable {
     case focusedApplication = "AXFocusedApplication", focusedUIElement = "AXFocusedUIElement"
     case selectedText = "AXSelectedText", value = "AXValue", selectedTextRange = "AXSelectedTextRange"
     case role = "AXRole", children = "AXChildren", parent = "AXParent"
+    case selectedTextMarkerRange = "AXSelectedTextMarkerRange"
+}
+
+enum AXParameterizedAttribute: String {
+    case stringForTextMarkerRange = "AXStringForTextMarkerRange"
+    case sentenceForTextMarker = "AXSentenceTextMarkerRangeForTextMarker"
+    case lengthForTextMarkerRange = "AXLengthForTextMarkerRange"
+    case elementsForSearchPredicate = "AXUIElementsForSearchPredicate"
+
+    static func live(_ element: AXUIElement, _ attribute: Self, _ parameter: CFTypeRef) -> AXRead {
+        var value: CFTypeRef?
+        let error = AXUIElementCopyParameterizedAttributeValue(element, attribute.rawValue as CFString, parameter, &value)
+        guard error == .success else { return .failure(error) }
+        guard let value else { return .failure(.noValue) }
+        return .value(value)
+    }
+}
+
+enum AXTextMarkerEndpoint {
+    case start, end
+
+    static func live(_ range: CFTypeRef, _ edge: Self) -> CFTypeRef? {
+        guard CFGetTypeID(range) == AXTextMarkerRangeGetTypeID() else { return nil }
+        let range = range as! AXTextMarkerRange
+        return edge == .start ? AXTextMarkerRangeCopyStartMarker(range) : AXTextMarkerRangeCopyEndMarker(range)
+    }
 }
 
 enum AXRead {
@@ -73,8 +99,20 @@ struct CaptureDetails: Codable {
 struct CaptureReport {
     let captured: CapturedContext?
     let details: CaptureDetails
-    // In-memory Books evidence only; never included in diagnostic serialization.
+    // In-memory native evidence only; never included in diagnostic serialization.
     var booksSelection: BooksSelectionReader.Selection? = nil
+    var webSelection: AXWebSelectionReader.Selection? = nil
+    var focus: CaptureFocus? = nil
+}
+
+struct CaptureFocus {
+    let application: AXUIElement
+    let element: AXUIElement
+
+    func matches(_ other: CaptureFocus?) -> Bool {
+        guard let other else { return false }
+        return CFEqual(application, other.application) && CFEqual(element, other.element)
+    }
 }
 
 struct ClipboardCapture {
@@ -87,6 +125,9 @@ struct CaptureFailure: LocalizedError {
     var errorDescription: String? {
         if details.issues.contains(where: { $0.clipboardReason == .restorationFailed }) {
             return "未能恢复原剪贴板，已停止查词。剪贴板可能仍是刚才选中的内容；请检查后重新复制需要保留的内容。"
+        }
+        if details.reason == .sourceChanged {
+            return "The source app changed. Select the text and try again."
         }
         if details.issues.contains(where: { $0.code == .accessibilityNotTrusted }) {
             return "This Dictionary process does not have Accessibility permission. Authorize this exact app in System Settings, then retry."
@@ -112,17 +153,23 @@ final class NativeCapturePipeline {
     private let safari: () -> CapturedContext?
     private let ax: () -> CaptureReport
     private let clipboard: () async throws -> ClipboardCapture
+    private let isSourceCurrent: () -> Bool
 
     init(isTrusted: @escaping () -> Bool, safari: @escaping () -> CapturedContext?,
-         ax: @escaping () -> CaptureReport, clipboard: @escaping () async throws -> ClipboardCapture) {
+         ax: @escaping () -> CaptureReport, clipboard: @escaping () async throws -> ClipboardCapture,
+         isSourceCurrent: @escaping () -> Bool = { true }) {
         self.isTrusted = isTrusted; self.safari = safari; self.ax = ax; self.clipboard = clipboard
+        self.isSourceCurrent = isSourceCurrent
     }
 
     func capture(isSafari: Bool, isBooks: Bool = false) async throws -> CapturedContext {
         let trusted = isTrusted()
         var details = CaptureDetails(accessibilityTrusted: trusted)
+        try requireSource(details)
         if isSafari {
-            if var captured = safari() {
+            let result = safari()
+            try requireSource(details)
+            if var captured = result {
                 details.strategy = .safariDOM; details.includeQuality(captured.capture); captured.diagnostics = details; return captured
             }
             details.add(CaptureIssue(code: .safariUnavailable))
@@ -133,15 +180,21 @@ final class NativeCapturePipeline {
         }
         let report = ax()
         report.details.issues.forEach { details.add($0) }
-        if !isBooks, var captured = report.captured {
+        try requireSource(details)
+        if !isBooks, report.webSelection == nil, var captured = report.captured {
             details.strategy = report.details.strategy; details.includeQuality(captured.capture); captured.diagnostics = details; return captured
         }
         let result: ClipboardCapture
         do { result = try await clipboard() }
         catch {
             details.add(CaptureIssue(code: .clipboardFallbackFailed, clipboardReason: .interrupted))
+            try requireSource(details)
             throw CaptureFailure(details: details)
         }
+        if let failure = result.failure {
+            details.add(CaptureIssue(code: .clipboardFallbackFailed, clipboardReason: failure))
+        }
+        try requireSource(details)
         try Task.checkCancellation()
         if let text = result.text.map({ isBooks ? SelectionLocation.trim($0) : $0 }), !text.isEmpty {
             // Books can append a citation to copied passages. Do not guess which
@@ -151,10 +204,29 @@ final class NativeCapturePipeline {
                 throw CaptureFailure(details: details)
             }
             var reason: CaptureReason = .contextUnavailable
-            if isBooks, let before = report.booksSelection {
+            if !isBooks, let before = report.webSelection {
                 let after = ax()
+                try requireSource(details)
+                if let current = after.webSelection, AXWebSelectionReader.matches(before, current),
+                   report.focus?.matches(after.focus) == true {
+                    if SelectionLocation.sameUnits(SelectionLocation.trim(text), current.target) {
+                        let recovered = ContextExtractor.contextForCopiedNativeTarget(text, text: current.text)
+                        if recovered.capture?.reliability == .heuristic {
+                            let capture = SelectionLocation(reliability: .heuristic, method: .axTreeWalk,
+                                reason: current.sentence == nil ? recovered.capture?.reason : nil)
+                            details.strategy = .axTreeWalk; details.includeQuality(capture)
+                            return CapturedContext(target: text, context: recovered.context,
+                                containingSentence: current.sentence ?? recovered.containingSentence,
+                                diagnostics: details, capture: capture)
+                        }
+                        reason = recovered.capture?.reason ?? .contextUnavailable
+                    } else { reason = .rangeMismatch }
+                } else { reason = .sourceChanged }
+            } else if isBooks, let before = report.booksSelection {
+                let after = ax()
+                try requireSource(details)
                 if let current = after.booksSelection, BooksSelectionReader.matches(before, current) {
-                    var recovered = ContextExtractor.contextForCopiedBooksTarget(text, text: current.text)
+                    var recovered = ContextExtractor.contextForCopiedNativeTarget(text, text: current.text)
                     if recovered.capture?.reliability == .heuristic {
                         details.strategy = .axRange; details.includeQuality(recovered.capture)
                         recovered.diagnostics = details
@@ -169,6 +241,7 @@ final class NativeCapturePipeline {
                     reason = first.capture?.reason ?? .contextUnavailable
                 } else {
                     let after = ax()
+                    try requireSource(details)
                     if let second = after.captured,
                        SelectionLocation.sameUnits(first.target, second.target),
                        SelectionLocation.sameUnits(first.context, second.context),
@@ -193,5 +266,13 @@ final class NativeCapturePipeline {
         }
         details.add(CaptureIssue(code: .clipboardFallbackFailed, clipboardReason: result.failure ?? .unusableText))
         throw CaptureFailure(details: details)
+    }
+
+    private func requireSource(_ details: CaptureDetails) throws {
+        guard isSourceCurrent() else {
+            var failure = details
+            failure.reason = .sourceChanged
+            throw CaptureFailure(details: failure)
+        }
     }
 }

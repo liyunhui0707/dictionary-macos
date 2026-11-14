@@ -6,7 +6,7 @@ not a requirement to buy membership before this channel can ship. Do not describ
 these artifacts as Apple-verified or bypass macOS security to test them.
 
 1. Explicitly approve a SemVer version in `VERSION`. The selected version for this
-   delivery is 0.2.0. App packagers read that file; companion extension versions
+   delivery is 0.3.0 (Chromium extension 0.2.0). App packagers read that file; companion extension versions
    change only when their implementation/protocol requires it.
 2. Run `swift test` and `node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs`.
    Optional live model tests require separately authorized data, credentials and
@@ -21,6 +21,9 @@ these artifacts as Apple-verified or bypass macOS security to test them.
    `build/releases.noindex/<version>-<architecture>/`. It refuses dirty source or
    an existing output directory; failed candidates remain for inspection.
 5. Inspect actual payloads for private information, resources, version and architecture.
+   The App must include the allowlisted companion files in `Contents/Resources/BrowserExtension`,
+   taken from the same committed source. Test “Getting Started” and export without a checkout;
+   browser configuration, tokens and local profiles must never enter this payload.
    Checksums are not identity authentication. Never upload the private build log,
    scratch checkout, local certificates, keys or QA evidence. Keep certificate-signed
    local daily/testing builds separate from public ad-hoc assets.
