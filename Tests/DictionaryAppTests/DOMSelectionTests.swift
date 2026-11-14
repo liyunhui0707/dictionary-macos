@@ -11,15 +11,14 @@ struct DOMSelectionTests {
     private let paragraph = "The bank approved my loan. We sat on the bank of the river."
 
     @Test func asynchronousFixtureHasAFiniteDeadlineAndIgnoresLateCompletion() async throws {
-        let page = DOMCapturePage()
-        try await page.load("<p id='p'>The bank closed.</p>")
+        var completion: ((Result<Int, Error>) -> Void)?
         await #expect(throws: DOMTestError.asyncDeadline) {
-            _ = try await page.asyncEvaluate("await new Promise(resolve=>setTimeout(resolve,200));return 1;",
-                                             timeoutNanoseconds: 20_000_000)
+            let _: Int = try await boundedDOMCallback(timeoutNanoseconds: 20_000_000) { completion = $0 }
         }
-        #expect(try await page.evaluate("1+1") as? Int == 2)
-        try await Task.sleep(nanoseconds: 250_000_000)
-        #expect(try await page.evaluate("1+1") as? Int == 2)
+        completion?(.success(1))
+        completion?(.success(2))
+        let value: Int = try await boundedDOMCallback { $0(.success(42)) }
+        #expect(value == 42)
     }
 
     @Test(arguments: ["chromium", "safari"])
@@ -71,10 +70,13 @@ struct DOMSelectionTests {
         _ = try await page.evaluate("""
         let w=window;
         for(let i=0;i<\(depth);i++) {
-            const f=w.document.querySelector('iframe');f.focus();w=f.contentWindow;
+            const f=w.document.querySelector('iframe');f.focus();
+            // Older WebKit can refuse a deep browsing context before our own
+            // depth cap. Leave focus on that real frame; capture must still
+            // reject it instead of reusing the selected word in the parent.
+            const child=f.contentWindow;if(!child){w=null;break;}w=child;
         }
-        const n=w.document.querySelector('p').firstChild;
-        w.getSelection().setBaseAndExtent(n,26,n,22);void 0;
+        if(w){const n=w.document.querySelector('p').firstChild;w.getSelection().setBaseAndExtent(n,26,n,22);}void 0;
         """)
         let reply = try await page.captureCurrentSelection()
         if depth == 2 {
@@ -911,22 +913,10 @@ final class DOMCapturePage: NSObject, WKNavigationDelegate {
     }
 
     func asyncEvaluate(_ script: String, timeoutNanoseconds: UInt64 = 10_000_000_000) async throws -> Any? {
-        var pending: CheckedContinuation<Any?, Error>?
-        return try await withCheckedThrowingContinuation { continuation in
-            pending = continuation
-            let deadline = Task { @MainActor in
-                do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
-                guard let reply = pending else { return }
-                pending = nil
-                reply.resume(throwing: DOMTestError.asyncDeadline)
-            }
-            view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
-                deadline.cancel()
-                guard let reply = pending else { return }
-                pending = nil
-                reply.resume(with: result.map { Optional.some($0) })
-            }
+        let value: Any = try await boundedDOMCallback(timeoutNanoseconds: timeoutNanoseconds) { completion in
+            view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page, completionHandler: completion)
         }
+        return value
     }
 
     func capture(start: Int, end: Int, reverse: Bool = false) async throws -> [String: Any] {
@@ -987,6 +977,29 @@ final class DOMCapturePage: NSObject, WKNavigationDelegate {
         navigation = nil
         deadline?.cancel()
         continuation.resume(with: result)
+    }
+}
+
+// Test the deadline/late-result bridge without a background WebKit timer.
+// Offscreen pages may suspend JS timers, so such a timer is not a reliable clock.
+@MainActor
+private func boundedDOMCallback<T>(timeoutNanoseconds: UInt64 = 10_000_000_000,
+                                   start: (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
+    var pending: CheckedContinuation<T, Error>?
+    return try await withCheckedThrowingContinuation { continuation in
+        pending = continuation
+        let deadline = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
+            guard let reply = pending else { return }
+            pending = nil
+            reply.resume(throwing: DOMTestError.asyncDeadline)
+        }
+        start { result in
+            deadline.cancel()
+            guard let reply = pending else { return }
+            pending = nil
+            reply.resume(with: result)
+        }
     }
 }
 
