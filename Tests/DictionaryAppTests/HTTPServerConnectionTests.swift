@@ -77,6 +77,19 @@ struct HTTPServerConnectionTests {
         }
     }
 
+    @Test func bundledReadingSampleOverRealLoopbackSocketNeedsNoTokenAndDoesNotQuery() async throws {
+        let (server, provider, _, token) = try setup()
+        defer { server.stop() }
+        let port = try await readyPort(server)
+        let sample = try await Self.exchange("GET /reading-sample HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", port: port)
+        #expect(sample.hasPrefix("HTTP/1.1 200 OK\r\n"))
+        #expect(sample.contains("text/html; charset=utf-8") && sample.contains("Cache-Control: no-store"))
+        #expect(sample.contains("They walked along the bank of the river."))
+        #expect(!sample.contains(token))
+        let unauthenticated = try await Self.exchange("GET /v1/status HTTP/1.1\r\n\r\n", port: port)
+        #expect(unauthenticated.hasPrefix("HTTP/1.1 401 Unauthorized\r\n"))
+        #expect(await provider.calls.isEmpty)
+    }
     @Test func statusOverSocketRequiresAuthenticationWithoutStartingLookup() async throws {
         let (server, provider, _, token) = try setup()
         defer { server.stop() }

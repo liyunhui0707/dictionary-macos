@@ -8,6 +8,39 @@ import Testing
 @Suite(.serialized)
 struct NativeAppearanceTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func firstUsePreparationScreensAndOpeningNeverQueries() async throws {
+        let store = AppearanceCredentials(), probe = AppearanceModelList(names: [])
+        let cloud = CloudSettings(store: store, enabled: false, persistEnabled: { _ in }, applyProvider: { _ in })
+        let local = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil), savedModel: nil,
+            probe: probe, persistModel: { _ in })
+        let service = LookupServiceSettings(saved: nil)
+        let provider = ControlledProvider(), coordinator = LookupCoordinator(provider: ControlledProvider())
+        coordinator.configurePrimaryProvider(provider, label: "Synthetic", isCloud: false)
+        let progress = FirstLookupProgress(coordinator: coordinator)
+        let root = try BrowserExtensionExportTests().fixture()
+        let setup = BrowserExtensionSetup(source: root.appendingPathComponent("source"), managedParent: root.appendingPathComponent("managed"))
+        for phase in ["fresh", "prepared", "changed"] {
+            if phase == "prepared" { setup.prepare() }
+            if phase == "changed" {
+                let directory = try #require(setup.prepared?.directory)
+                try Data("changed".utf8).write(to: directory.appendingPathComponent("content.js"))
+            }
+            for scheme in [ColorScheme.light, .dark] {
+                try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .started,
+                    serviceSettings: service, progress: progress, extensionSetup: setup).frame(width: 580, height: 580),
+                    size: NSSize(width: 580, height: 580), scheme: scheme,
+                    preview: "preparation-\(phase)-\(scheme == .light ? "light" : "dark")") { view in
+                    #expect(view.fittingSize.width <= 580 && view.fittingSize.height <= 580)
+                }
+            }
+        }
+        #expect(await provider.calls.isEmpty)
+        #expect(await store.accesses == 0)
+        #expect(await probe.calls == 0)
+        #expect(service.selected == nil && progress.manual == .notStarted && progress.reading == .notStarted)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
     func supportDiagnosticsAndReportScreens() async throws {
         let support = SupportDiagnostics()
         support.listenerChanged(.unavailable)

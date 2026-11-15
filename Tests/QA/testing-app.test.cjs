@@ -46,6 +46,7 @@ test('packaging passes the selected certificate and isolates testing bundle name
   const resources=path.join(out,'DictionaryApp_DictionaryApp.bundle/EnglishDictionary');
   fs.mkdirSync(resources,{recursive:true});fs.writeFileSync(path.join(resources,'oewn-2025.json.gz'),'data');
   fs.writeFileSync(path.join(resources,'../AppIcon.icns'),'icon');
+  fs.writeFileSync(path.join(resources, '../ReadingSample.html'), 'synthetic reading sample');
   const calls=[];
   const app=packageApp(packageOut,binary,{buildID:'test'},(cmd,args)=>calls.push([cmd,args]),signingOptions('testing',fingerprint));
   assert.deepEqual(calls[0],['/usr/bin/codesign',['--sign',fingerprint,app]]);

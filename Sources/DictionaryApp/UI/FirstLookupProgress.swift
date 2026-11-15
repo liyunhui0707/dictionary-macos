@@ -5,7 +5,7 @@ import Foundation
 /// count as a successful lookup. No source text, credential or progress is saved.
 @MainActor
 final class FirstLookupProgress: ObservableObject {
-    static let readingSampleURL = URL(string: "https://dictionary-macos-liyunhui.outerepoch3.chatgpt.site/reading-check.html")!
+    static let readingSampleURL = URL(string: "http://127.0.0.1:49152/reading-sample")!
     enum Check: Equatable {
         case notStarted, querying, responseReceived, needsContext, needsReview, noMeaning, failed, cancelled
     }
