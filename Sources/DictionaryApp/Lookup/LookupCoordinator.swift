@@ -12,6 +12,7 @@ enum LookupOutcome {
 
 enum LookupPhase {
     case idle
+    case reviewingContext(LookupRequest, id: UUID)
     // UI-only monotonic timing, freshly created for every submission (even the same request).
     case loading(LookupRequest, startedAt: ContinuousClock.Instant = .now)
     case finished(LookupRequest, LookupOutcome)
@@ -135,6 +136,10 @@ final class LookupCoordinator: ObservableObject {
     func cancel(_ channel: LookupChannel) {
         cloud(for: channel).prepare(nil)
         if channel == .selection { selectionIntent = UUID() }
+        if channel == .selection, case .reviewingContext(let request, _) = selection {
+            selection = .finished(request, .cancelled)
+            support?.cancelCapture()
+        }
         guard let operation = active[channel] else { return }
         cancelActive(channel)
         support?.cancelled(channel)
@@ -163,6 +168,7 @@ final class LookupCoordinator: ObservableObject {
         selectionCloud.prepare(nil)
         cancelActive(.selection)
         selectionIntent = UUID()
+        if case .reviewingContext = selection { selection = .idle }
         support?.begin(.selection, capturing: true)
         return selectionIntent
     }
@@ -171,7 +177,17 @@ final class LookupCoordinator: ObservableObject {
 
     func finishCapture(_ intent: UUID, request: LookupRequest) {
         guard isCurrentCapture(intent) else { return }
+        if request.capture?.method == .screenOCR {
+            selection = .reviewingContext(request, id: intent)
+            return
+        }
         // The translation continues the capture's intent; it is not a new lookup.
+        start(request, to: .selection)
+    }
+
+    func confirmScreenContext(_ id: UUID) {
+        guard selectionIntent == id, case .reviewingContext(let request, let current) = selection,
+              current == id, request.capture?.method == .screenOCR else { return }
         start(request, to: .selection)
     }
 

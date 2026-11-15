@@ -9,15 +9,18 @@ struct LookupResultView: View {
     var showsCloudControls: Bool
     var primaryLabel: String?
     var showsAdditionalMeanings: Bool
+    var onConfirmScreenContext: ((UUID) -> Void)?
 
     init(phase: LookupPhase, layout: Layout = .standard, onCancel: (() -> Void)? = nil,
          cloud: CloudAssistanceState? = nil, showsCloudControls: Bool = true,
-         primaryLabel: String? = nil, showsAdditionalMeanings: Bool = true) {
+         primaryLabel: String? = nil, showsAdditionalMeanings: Bool = true,
+         onConfirmScreenContext: ((UUID) -> Void)? = nil) {
         self.phase = phase; self.layout = layout; self.onCancel = onCancel
         _cloud = ObservedObject(wrappedValue: cloud ?? CloudAssistanceState(provider: nil))
         self.showsCloudControls = showsCloudControls
         self.primaryLabel = primaryLabel
         self.showsAdditionalMeanings = showsAdditionalMeanings
+        self.onConfirmScreenContext = onConfirmScreenContext
     }
 
     var displayedPhase: LookupPhase { cloud.displayedPhase(for: phase) }
@@ -31,6 +34,20 @@ struct LookupResultView: View {
         VStack(alignment: .leading, spacing: 12) {
             if showsCloudControls { CloudAssistanceView(state: cloud, originalLabel: primaryLabel ?? "原始 AI") }
             switch displayedPhase {
+            case .reviewingContext(let request, let id):
+                Text(request.target).font(DictionaryStyle.wordFont(compact: layout == .popup))
+                Label("屏幕语境 · 请核对", systemImage:"viewfinder").font(.system(size:13,weight:.medium))
+                Text(request.context ?? "").font(.system(size:15,design:.serif)).lineSpacing(3)
+                Text("这是本地文字识别得到的可能原句，尚未发送查询。请确认它对应选中的词。")
+                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
+                Text("确认后将交给 \(primaryLabel ?? "当前查词服务")；使用云端服务时会发送单词和这段原句。图片不会发送或保存。")
+                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
+                HStack {
+                    if let confirm=onConfirmScreenContext {
+                        Button("使用这段语境查词") { confirm(id) }.accessibilityIdentifier("screen-context-confirm")
+                    }
+                    if let onCancel { Button("放弃",action:onCancel) }
+                }
             case .idle:
                 Label("选中英文单词，按 ⌥D 查词。", systemImage: "text.cursor")
                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
@@ -77,7 +94,7 @@ struct LookupResultView: View {
 
     private var referenceTarget: String? {
         switch phase {
-        case .idle: return nil
+        case .idle, .reviewingContext: return nil
         case .loading(let request, _), .finished(let request, _): return request.target.isEmpty ? nil : request.target
         }
     }
@@ -224,6 +241,7 @@ struct LookupResultPresentation {
         sentence = context == nil || request.capture?.reason == .sentenceUnavailable ? nil : request.containingSentence
         if sentence == nil { sentenceLabel = nil }
         else if request.isManual { sentenceLabel = "推断原句 · 手动输入" }
+        else if request.capture?.method == .screenOCR { sentenceLabel = "可能的原句 · 屏幕识别" }
         else {
             switch request.capture?.reliability {
             case .anchored: sentenceLabel = "原句"
@@ -233,6 +251,7 @@ struct LookupResultPresentation {
         }
         sentenceTranslation = sentence == nil ? nil : Translation.displayText(translation?.exampleTranslation)
         if request.isManual { contextLabel = "你提供的语境" }
+        else if request.capture?.method == .screenOCR { contextLabel = "屏幕识别的语境" }
         else {
             switch request.capture?.reliability {
             case .anchored: contextLabel = "捕获的语境"

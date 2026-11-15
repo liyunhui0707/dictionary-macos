@@ -9,11 +9,13 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let serviceSettings: LookupServiceSettings
     private let progress: FirstLookupProgress
     private let support: SupportDiagnostics
+    private let booksScreenSettings: BooksScreenSettings
     private let onExample: () -> Void
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
          serviceSettings: LookupServiceSettings? = nil, progress: FirstLookupProgress? = nil,
          support: SupportDiagnostics? = nil,
+         booksScreenSettings: BooksScreenSettings? = nil,
          onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings
@@ -22,6 +24,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         self.serviceSettings = serviceSettings ?? .preview()
         self.progress = progress ?? FirstLookupProgress()
         self.support = support ?? SupportDiagnostics()
+        self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
@@ -38,7 +41,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         let host = NSHostingController(rootView:
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
                     readiness: readiness, serviceSettings: serviceSettings, progress: progress, support: support,
-                    onExample: onExample).frame(width: 580, height: height))
+                    booksScreenSettings: booksScreenSettings, onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -68,18 +71,21 @@ struct DictionarySettingsView: View {
     @ObservedObject var serviceSettings: LookupServiceSettings
     @ObservedObject var progress: FirstLookupProgress
     @ObservedObject var support: SupportDiagnostics
+    @ObservedObject var booksScreenSettings: BooksScreenSettings
     let onExample: () -> Void
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
          readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil,
-         progress: FirstLookupProgress? = nil, support: SupportDiagnostics? = nil, onExample: @escaping () -> Void = {}) {
+         progress: FirstLookupProgress? = nil, support: SupportDiagnostics? = nil,
+         booksScreenSettings: BooksScreenSettings? = nil, onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
         self.progress = progress ?? FirstLookupProgress()
         self.support = support ?? SupportDiagnostics()
+        self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
         _navigation = StateObject(wrappedValue: SettingsNavigation(section))
     }
 
@@ -122,6 +128,22 @@ struct DictionarySettingsView: View {
 
     private var general: some View {
         VStack(alignment: .leading, spacing: 22) {
+            DictionaryCard {
+                Toggle("Books 屏幕语境（本地识别）",isOn:Binding(
+                    get:{ booksScreenSettings.enabled }, set:{ booksScreenSettings.setEnabled($0) }))
+                    .accessibilityIdentifier("books-screen-context-enabled")
+                Text("Books 无法提供原句时，尝试识别当前窗口鼠标附近的文字。保持鼠标停在选词旁；位置不明确或页面变化时不使用。每次先核对原句，再决定是否交给查词服务。")
+                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
+                Text("图片仅在内存中用于本地识别，不保存或上传。需要 macOS 屏幕录制权限，未授权时保持普通查词。")
+                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
+                HStack {
+                    Text(booksScreenSettings.permissionGranted ? "屏幕权限已开启" : "屏幕权限未开启").font(.system(size:12))
+                    Button("重新检查") { booksScreenSettings.refresh() }
+                    if booksScreenSettings.enabled && !booksScreenSettings.permissionGranted {
+                        Button("申请屏幕录制权限") { booksScreenSettings.requestPermission() }
+                    }
+                }
+            }.onAppear { booksScreenSettings.refresh() }
             DictionaryCard {
                 HStack {
                     Label(readiness.permissionLabel, systemImage: readiness.permission == .granted ? "checkmark.circle" : "hand.raised")

@@ -13,6 +13,7 @@ enum AXParameterizedAttribute: String {
     case stringForTextMarkerRange = "AXStringForTextMarkerRange"
     case sentenceForTextMarker = "AXSentenceTextMarkerRangeForTextMarker"
     case lengthForTextMarkerRange = "AXLengthForTextMarkerRange"
+    case uiElementForTextMarker = "AXUIElementForTextMarker"
     case elementsForSearchPredicate = "AXUIElementsForSearchPredicate"
 
     static func live(_ element: AXUIElement, _ attribute: Self, _ parameter: CFTypeRef) -> AXRead {
@@ -48,11 +49,11 @@ enum AXRead {
 }
 
 enum CaptureStrategy: String, Codable {
-    case safariDOM, axRange, axTreeWalk, axSelectionOnly, clipboardOnly
+    case safariDOM, axRange, axTreeWalk, axSelectionOnly, clipboardOnly, screenOCR
     var reliability: String {
         switch self {
         case .axRange: return "selectionRange"
-        case .safariDOM, .axTreeWalk: return "heuristicContext"
+        case .safariDOM, .axTreeWalk, .screenOCR: return "heuristicContext"
         case .axSelectionOnly, .clipboardOnly: return "targetOnly"
         }
     }
@@ -76,6 +77,7 @@ struct CaptureIssue: Codable, Equatable {
 }
 
 struct CaptureDetails: Codable {
+    var screenContext: ScreenContextStatus? = nil
     var strategy: CaptureStrategy? = nil
     var issues: [CaptureIssue] = []
     var accessibilityTrusted: Bool? = nil

@@ -41,7 +41,7 @@ final class FirstLookupProgress: ObservableObject {
     private func receive(_ phase: LookupPhase, channel: LookupChannel) {
         let check: Check
         switch phase {
-        case .idle: return // Closing a popup does not erase the result awaiting confirmation.
+        case .idle, .reviewingContext: return // A preview is not a completed lookup.
         case .loading: check = .querying
         case .finished(_, .cancelled): check = .cancelled
         case .finished(_, .failure): check = .failed

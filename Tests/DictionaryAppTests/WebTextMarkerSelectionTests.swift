@@ -256,6 +256,7 @@ struct WebTextMarkerSelectionTests {
                     let key = mode == "differentSentence" && (parameter as? String) == "end" ? "other-sentence" :
                         change == "sentenceMarker" ? "sentence-range-changed" : "sentence-range"
                     return nativeSentence == nil ? .failure(.attributeUnsupported) : .value(key as CFString)
+                case .uiElementForTextMarker: return .failure(.attributeUnsupported)
                 case .lengthForTextMarkerRange:
                     return nativeSentence.map { .value(NSNumber(value: mode == "oversizedSentence" ? 8001 : $0.utf16.count)) } ?? .failure(.attributeUnsupported)
                 }

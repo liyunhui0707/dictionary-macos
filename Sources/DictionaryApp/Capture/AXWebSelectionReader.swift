@@ -23,6 +23,35 @@ struct AXWebSelectionReader {
         self.read = read; self.parameter = parameter; self.endpoint = endpoint
     }
 
+    /// Rich editors can expose a value and numeric selection in different text
+    /// representations. Read only the focused editor's opaque native sentence;
+    /// never substitute a document selection left in an ancestor web area.
+    func selection(inEditor editor: AXUIElement, target: String) -> Selection? {
+        let deadline = ProcessInfo.processInfo.systemUptime + 1
+        guard case .value(let role) = read(editor, .role), role as? String == "AXTextArea",
+              case .value(let marker) = read(editor, .selectedTextMarkerRange),
+              case .value(let value) = parameter(editor, .stringForTextMarkerRange, marker),
+              let selected = value as? String, selected.utf16.count <= 2000,
+              SelectionLocation.sameUnits(SelectionLocation.trim(selected), target),
+              markerBelongs(marker, to: editor, deadline: deadline),
+              let sentence = selectedSentence(editor, marker: marker),
+              markerBelongs(sentence.marker, to: editor, deadline: deadline),
+              ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+        return Selection(element: editor, marker: marker, target: target, text: sentence.text,
+                         sentenceMarker: sentence.marker, sentence: sentence.text)
+    }
+
+    private func markerBelongs(_ marker: CFTypeRef, to editor: AXUIElement, deadline: TimeInterval) -> Bool {
+        for edge in [AXTextMarkerEndpoint.start, .end] {
+            guard ProcessInfo.processInfo.systemUptime < deadline,
+                  let position = endpoint(marker, edge),
+                  case .value(let owner) = parameter(editor, .uiElementForTextMarker, position),
+                  CFGetTypeID(owner) == AXUIElementGetTypeID(),
+                  belongs(owner as! AXUIElement, to: editor, deadline: deadline) else { return false }
+        }
+        return true
+    }
+
     func selection(in root: AXUIElement) -> Selection? {
         let deadline = ProcessInfo.processInfo.systemUptime + 1
         guard let documents = webAreas(in: root, deadline: deadline) else { return nil }

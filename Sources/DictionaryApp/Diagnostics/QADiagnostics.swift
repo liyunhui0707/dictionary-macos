@@ -113,6 +113,7 @@ final class QADiagnostics {
                 else if intent == coordinator.selectionIntent {
                     self.finish(intent, outcome.result == nil ? .providerFailed : .providerSucceeded)
                 }
+            case .reviewingContext: break // No provider request before the user's confirmation.
             case .idle:
                 if let intent = self.observedLookup { self.finish(intent, .lookupCancelled) }
             }
