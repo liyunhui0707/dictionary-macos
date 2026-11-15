@@ -14,21 +14,25 @@ final class AppReadiness: ObservableObject {
     private let checkPermission: () -> Bool
     private let openPermissionSettings: () -> Bool
     private let revealApp: (URL) -> Void
+    private let diagnostics: QADiagnostics?
 
     init(buildID: String?, appURL: URL, checkPermission: @escaping () -> Bool,
-         openPermissionSettings: @escaping () -> Bool, revealApp: @escaping (URL) -> Void, version: String? = nil) {
+         openPermissionSettings: @escaping () -> Bool, revealApp: @escaping (URL) -> Void, version: String? = nil,
+         diagnostics: QADiagnostics? = nil) {
         self.buildID = buildID; self.appURL = appURL
         self.version = version
         self.checkPermission = checkPermission
         self.openPermissionSettings = openPermissionSettings; self.revealApp = revealApp
+        self.diagnostics = diagnostics
     }
 
-    static func live() -> AppReadiness {
+    static func live(diagnostics: QADiagnostics? = nil) -> AppReadiness {
         AppReadiness(buildID: QABuildIdentity.current?.buildID, appURL: Bundle.main.bundleURL,
             checkPermission: { AXIsProcessTrusted() }, openPermissionSettings: {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
             }, revealApp: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
-            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            diagnostics: diagnostics)
     }
 
     // Default for isolated views/tests: never probes the host's actual permissions.
@@ -45,7 +49,11 @@ final class AppReadiness: ObservableObject {
         case .granted: "选词权限已开启"
         }
     }
-    func refresh() { permission = checkPermission() ? .granted : .required }
+    func refresh() {
+        let trusted = checkPermission()
+        permission = trusted ? .granted : .required
+        diagnostics?.record(QAEvent(kind: .accessibilityChecked, trusted: trusted))
+    }
     func openSettings() { settingsOpenFailed = !openPermissionSettings() }
     func reveal() { revealApp(appURL) }
 }

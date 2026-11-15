@@ -4,6 +4,29 @@ import Testing
 
 @MainActor
 struct AppReadinessTests {
+    @Test func diagnosticRefreshTracksPermissionChangesWithoutLoggingAppPathsOrExtraProbes() throws {
+        var trusted = false
+        var probes = 0
+        var settingsOpened = 0
+        let diagnostics = QADiagnostics()
+        let readiness = AppReadiness(buildID: nil,
+            appURL: URL(fileURLWithPath: "/Synthetic/PRIVATE_APP_PATH.app"),
+            checkPermission: { probes += 1; return trusted },
+            openPermissionSettings: { settingsOpened += 1; return true }, revealApp: { _ in },
+            diagnostics: diagnostics)
+        #expect(probes == 0 && diagnostics.events.isEmpty)
+        readiness.refresh()
+        trusted = true
+        readiness.refresh()
+        trusted = false
+        readiness.refresh()
+        #expect(probes == 3 && settingsOpened == 0)
+        #expect(readiness.permission == .required)
+        #expect(diagnostics.events.map(\.kind) == [.accessibilityChecked, .accessibilityChecked, .accessibilityChecked])
+        #expect(diagnostics.events.map(\.trusted) == [false, true, false])
+        #expect(!String(decoding: try diagnostics.encodedEvents(), as: UTF8.self).contains("PRIVATE_APP_PATH"))
+    }
+
     @Test func constructionDoesNotProbeAndRefreshReflectsExactProcess() {
         var trusted = false
         var probes = 0
