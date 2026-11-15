@@ -48,7 +48,7 @@ AI 释义用于辅助理解，可能出现错误。参考词典与 AI 结果分�
 | --- | --- |
 | 主窗口 | 手动输入英文和语境，无需选词权限 |
 | Apple Books | ⌥D；原生原句优先，也可主动开启[屏幕语境](docs/guide.md#apple-books-的屏幕语境)，逐次核对识别结果 |
-| Chrome / Edge / Brave 等 | 安装随源码提供的 Chromium 扩展并配置本机令牌 |
+| Chrome / Edge / Brave 等 | 使用 App 内配套的 Chromium 扩展并配置本机令牌 |
 | Safari | 配置 Safari JavaScript 与自动化授权，详见使用指南 |
 | Obsidian 桌面版 | 安装配套插件并配置本机令牌 |
 | Readest、Session Manager、Markdown 等 | 使用系统选词路径；已验证部分阅读和编辑场景，具体版本与边界见[阅读场景验收](docs/reading-compatibility.md) |
