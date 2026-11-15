@@ -41,15 +41,28 @@ struct ScreenTextRecognitionTests {
         let river=try #require(lines.first { $0.text.contains("river") })
         let word=try #require(river.words.first)
         #expect(river.text == "They walked along the bank of the river.")
-        #expect(river.confidence >= 0.85)
+        #expect(river.confidence >= 0 && river.confidence <= 1)
         #expect(river.bounds.insetBy(dx:-0.5,dy:-0.5).contains(word.bounds))
         let sentence=ScreenTextContext.sentence(target:"bank",pointer:CGPoint(x:word.bounds.midX,y:word.bounds.midY),lines:lines)
-        #expect(sentence == "They walked along the bank of the river.")
+        // Vision's confidence calibration differs between macOS versions. A
+        // correct string is still insufficient evidence below the product gate.
+        if river.confidence >= 0.85 {
+            #expect(sentence == "They walked along the bank of the river.")
+        } else {
+            #expect(sentence == nil)
+        }
         let region=CGRect(x:0,y:100,width:900,height:200)
         let crop=try #require(await BooksScreenCapture.localCrop(image:image,window:snapshot.windowBounds,region:region))
         let cropped=BooksScreenSnapshot(windowID:1,windowBounds:snapshot.windowBounds,region:crop.region,
             pointer:CGPoint(x:word.bounds.midX-region.minX,y:word.bounds.midY-region.minY),digest:Data(),image:crop.image)
         let croppedLines=await ScreenTextRecognition.lines(snapshot:cropped,target:"bank",timeout:30)
-        #expect(ScreenTextContext.sentence(target:"bank",pointer:cropped.pointer,lines:croppedLines) == "They walked along the bank of the river.")
+        let croppedRiver=try #require(croppedLines.first { $0.text.contains("river") })
+        #expect(croppedRiver.text == "They walked along the bank of the river.")
+        let croppedSentence=ScreenTextContext.sentence(target:"bank",pointer:cropped.pointer,lines:croppedLines)
+        if croppedRiver.confidence >= 0.85 {
+            #expect(croppedSentence == "They walked along the bank of the river.")
+        } else {
+            #expect(croppedSentence == nil)
+        }
     }
 }
