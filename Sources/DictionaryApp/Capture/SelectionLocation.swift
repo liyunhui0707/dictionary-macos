@@ -21,7 +21,7 @@ struct UTF16Span: Codable, Equatable, Sendable {
 }
 
 enum CaptureReliability: String, Codable, Sendable { case anchored, heuristic, targetOnly, legacyUnverified }
-enum CaptureMethod: String, Codable, Sendable { case domRange, editorRange, axRange, axTreeWalk, clipboard }
+enum CaptureMethod: String, Codable, Sendable { case domRange, editorRange, axRange, axTreeWalk, clipboard, screenOCR }
 enum CaptureReason: String, Codable, Sendable {
     case ambiguousOccurrence, rangeMismatch, unsupportedStructure, incompleteTraversal, sentenceUnavailable
     case budgetExceeded, metadataInvalid, contextUnavailable, sourceChanged

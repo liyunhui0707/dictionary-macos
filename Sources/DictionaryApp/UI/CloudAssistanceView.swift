@@ -17,6 +17,7 @@ struct CloudAssistanceView: View {
                     .accessibilityIdentifier("answer-source")
                 }
                 switch state.phase {
+                case .reviewingContext: EmptyView()
                 case .idle:
                     HStack {
                         Text(originalLabel).font(.system(size: 12, weight: .medium))

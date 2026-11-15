@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let localConfiguration: LocalModelConfiguration
     private let cloudCredentialStore: KeychainCloudCredentialStore
     private let preferences: UserDefaults
+    private lazy var booksScreenSettings = BooksScreenSettings(
+        enabled: preferences.bool(forKey: BooksScreenSettings.preference),
+        persist: { [weak self] in self?.preferences.set($0,forKey:BooksScreenSettings.preference) })
     private var configuredCloudProvider: TranslationProvider?
     private var appliedPrimaryConfiguration: String?
     private lazy var serviceSettings = LookupServiceSettings(
@@ -39,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
         readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress, support: support,
-        onExample: { [weak self] in self?.prepareExample() })
+        booksScreenSettings: booksScreenSettings, onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
         onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) },
@@ -362,12 +365,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///    neither AX text nor JavaScript (Electron apps, some PDFs).
     private func captureTargetAndContext(source: NSRunningApplication) async throws -> CapturedContext {
         let extractor = ContextExtractor(sourceApplication: AXUIElementCreateApplication(source.processIdentifier))
+        let isBooks = source.bundleIdentifier == "com.apple.iBooksX"
+        let screenEnabled = isBooks && booksScreenSettings.enabled
+        var firstReport = screenEnabled ? extractor.extractReport() : nil
+        let hasSentence = firstReport?.captured?.containingSentence != nil
+        let isCurrent = { !source.isTerminated && NSWorkspace.shared.frontmostApplication?.processIdentifier == source.processIdentifier }
         let pipeline = NativeCapturePipeline(isTrusted: { AXIsProcessTrusted() },
-            safari: { [self] in safariContextExtractor.extract() }, ax: { extractor.extractReport() },
+            safari: { [self] in safariContextExtractor.extract() }, ax: {
+                if let report=firstReport { firstReport=nil; return report }
+                return extractor.extractReport()
+            },
             clipboard: { [self] in try await selectionReader.readSelectionResult() },
             isSourceCurrent: { !source.isTerminated && NSWorkspace.shared.frontmostApplication?.processIdentifier == source.processIdentifier })
         let bundleID = source.bundleIdentifier ?? ""
-        return try await pipeline.capture(isSafari: Self.safariBundleIDs.contains(bundleID),
-                                          isBooks: bundleID == "com.apple.iBooksX")
+        var screenStatus: ScreenContextStatus?
+        var captured = try await BooksScreenFallback.capture(enabled:screenEnabled,isBooks:isBooks,
+            permission:screenEnabled && CGPreflightScreenCaptureAccess(),nativeHasSentence:hasSentence,
+            isCurrent:isCurrent, snapshot:{ await BooksScreenCapture.snapshot(source:source,isCurrent:isCurrent,failed:{screenStatus=$0}) },
+            native:{ try await pipeline.capture(isSafari:Self.safariBundleIDs.contains(bundleID),isBooks:isBooks) },
+            recognize:{ await ScreenTextRecognition.lines(snapshot:$0,target:$1) })
+        if captured.containingSentence == nil, let screenStatus { captured.diagnostics.screenContext=screenStatus }
+        return captured
     }
 }

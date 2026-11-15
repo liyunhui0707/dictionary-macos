@@ -6,12 +6,14 @@ struct TranslationPopupView: View {
     @ObservedObject var cloud: CloudAssistanceState
     let primaryLabel: String?
     let primaryIsCloud: Bool
+    var onConfirmScreenContext: ((UUID) -> Void)?
 
     init(state: PopupState, onClose: @escaping () -> Void, cloud: CloudAssistanceState? = nil,
-         primaryLabel: String? = nil, primaryIsCloud: Bool = false) {
+         primaryLabel: String? = nil, primaryIsCloud: Bool = false, onConfirmScreenContext: ((UUID) -> Void)? = nil) {
         self.state = state; self.onClose = onClose
         _cloud = ObservedObject(wrappedValue: cloud ?? CloudAssistanceState(provider: nil))
         self.primaryLabel = primaryLabel; self.primaryIsCloud = primaryIsCloud
+        self.onConfirmScreenContext = onConfirmScreenContext
     }
 
     private var controlsHeight: CGFloat { primaryIsCloud || cloud.offer == nil ? 0 : state.cloudControlsHeight }
@@ -77,7 +79,8 @@ struct TranslationPopupView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LookupResultView(phase: state.phase, layout: .popup, onCancel: onClose, cloud: cloud, showsCloudControls: false,
-                        primaryLabel: primaryLabel, showsAdditionalMeanings: !primaryIsCloud)
+                        primaryLabel: primaryLabel, showsAdditionalMeanings: !primaryIsCloud,
+                        onConfirmScreenContext: onConfirmScreenContext)
                         .id("lookup-result-top")
                         .padding(.trailing, 4)
                         .background(GeometryReader { geometry in

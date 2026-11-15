@@ -130,11 +130,27 @@ final class ContextExtractor {
                 }
                 return targetOnly(target, reason: .sourceChanged)
             }
+            if let captured = extractEditorSelection(system: system, app: app, focused: element, target: target) { return captured }
             return targetOnly(target, reason: .rangeMismatch)
         }
         // A readable selected word does not imply that numeric context is exposed.
+        if let captured = extractEditorSelection(system: system, app: app, focused: element, target: target) { return captured }
         if let captured = extractWebSelection(system: system, app: app, focused: element) { return captured }
         return extractByTreeWalk(focused: element, target: target)
+    }
+
+    private func extractEditorSelection(system: AXUIElement, app: AXUIElement,
+                                        focused: AXUIElement, target: String) -> CapturedContext? {
+        let reader = AXWebSelectionReader(read: readAttribute, parameter: readParameter, endpoint: markerEndpoint)
+        guard let first = reader.selection(inEditor: focused, target: target),
+              let second = reader.selection(inEditor: focused, target: target), AXWebSelectionReader.matches(first, second),
+              let currentApp = application(in: system), CFEqual(app, currentApp),
+              let currentFocus = focusedElementAttribute(app, .focusedUIElement), CFEqual(focused, currentFocus),
+              let currentTarget = readSelectedText(from: focused), SelectionLocation.sameUnits(currentTarget, target) else { return nil }
+        // Reuse the marker pipeline's independent copy and post-copy source checks.
+        webSelection = second
+        details.strategy = .axTreeWalk
+        return Self.contextForCopiedNativeTarget(target, text: second.text)
     }
 
     /// Pure reconciliation of already-read evidence. The copied word determines

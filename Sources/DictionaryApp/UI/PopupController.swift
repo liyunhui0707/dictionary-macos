@@ -182,7 +182,8 @@ private struct CoordinatorPopupView: View {
     let onClose: () -> Void
     var body: some View {
         TranslationPopupView(state: state, onClose: onClose, cloud: coordinator.selectionCloud,
-            primaryLabel: coordinator.primaryLabel, primaryIsCloud: coordinator.primaryIsCloud)
+            primaryLabel: coordinator.primaryLabel, primaryIsCloud: coordinator.primaryIsCloud,
+            onConfirmScreenContext: { coordinator.confirmScreenContext($0) })
     }
 }
 
