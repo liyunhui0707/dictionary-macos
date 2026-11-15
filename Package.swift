@@ -11,7 +11,7 @@ let package = Package(
         .executableTarget(
             name: "DictionaryApp",
             path: "Sources/DictionaryApp",
-            resources: [.copy("Resources/EnglishDictionary"), .copy("Resources/AppIcon.icns")]
+            resources: [.copy("Resources/EnglishDictionary"), .copy("Resources/AppIcon.icns"), .copy("Resources/ReadingSample.html")]
         ),
         .testTarget(name: "DictionaryAppTests", dependencies: ["DictionaryApp"])
     ]

@@ -15,6 +15,17 @@ final class TranslateHandler {
     }
 
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
+        // Public synthetic text only: no token access, lookup admission or model
+        // request. Every service/status request below still requires its bearer.
+        if request.method == "GET" && request.path == "/reading-sample" {
+            guard let url = ReadingSampleResource.url,
+                  let html = try? Data(contentsOf: url) else { return .empty(status: 503) }
+            return HTTPResponse(status: 200, headers: [
+                "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"
+            ], body: html)
+        }
         // 1. Method + path check.
         let isStatus = request.method == "GET" && request.path == "/v1/status"
         guard isStatus || (request.method == "POST" && request.path == "/v1/translate") else {
@@ -82,6 +93,25 @@ final class TranslateHandler {
         } catch {
             return .json(status: 500, ["error": "could not encode translation: \(error.localizedDescription)"])
         }
+    }
+}
+
+enum ReadingSampleResource {
+    static var url: URL? {
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            return Bundle.main.resourceURL.flatMap { packaged(in: $0) }
+        }
+        return inBundle(Bundle.module.bundleURL)
+    }
+
+    static func packaged(in resources: URL) -> URL? {
+        inBundle(resources.appendingPathComponent("DictionaryApp_DictionaryApp.bundle"))
+    }
+
+    private static func inBundle(_ bundle: URL) -> URL? {
+        ["Contents/Resources/ReadingSample.html", "ReadingSample.html"]
+            .map { bundle.appendingPathComponent($0) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
 

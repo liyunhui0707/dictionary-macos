@@ -14,6 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let localConfiguration: LocalModelConfiguration
     private let cloudCredentialStore: KeychainCloudCredentialStore
     private let preferences: UserDefaults
+    private let extensionDirectory: URL
+    private lazy var extensionSetup = BrowserExtensionSetup(managedParent: extensionDirectory,
+        savedDirectory: preferences.string(forKey: BrowserExtensionSetup.preference).flatMap {
+            $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil
+        }, persist: { [weak self] in self?.preferences.set($0.path, forKey: BrowserExtensionSetup.preference) })
     private lazy var booksScreenSettings = BooksScreenSettings(
         enabled: preferences.bool(forKey: BooksScreenSettings.preference),
         persist: { [weak self] in self?.preferences.set($0,forKey:BooksScreenSettings.preference) })
@@ -42,7 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
         readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress, support: support,
-        booksScreenSettings: booksScreenSettings, onExample: { [weak self] in self?.prepareExample() })
+        booksScreenSettings: booksScreenSettings, extensionSetup: extensionSetup,
+        onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
         onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) },
@@ -101,6 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferences = isolated
         } else { preferences = .standard }
         self.preferences = preferences
+        self.extensionDirectory = firstUse?.tokenDirectory.appendingPathComponent("BrowserExtensions", isDirectory: true)
+            ?? BrowserExtensionSetup.defaultParent
         self.cloudCredentialStore = KeychainCloudCredentialStore(isolationID: firstUse?.id)
         self.tokenStore = TokenStore(directory: firstUse?.tokenDirectory)
         let environment = ProcessInfo.processInfo.environment

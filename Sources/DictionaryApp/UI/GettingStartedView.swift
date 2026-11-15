@@ -6,12 +6,12 @@ struct GettingStartedView: View {
     @ObservedObject var local: LocalModelSettings
     @ObservedObject var readiness: AppReadiness
     @ObservedObject var progress: FirstLookupProgress
+    @ObservedObject var extensionSetup: BrowserExtensionSetup
     let onService: () -> Void
     let onLocal: () -> Void
     let onPermission: () -> Void
     let onExample: () -> Void
-    @State private var exportMessage = ""
-    @State private var browserReading = false
+    @State private var pathCopied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -24,6 +24,17 @@ struct GettingStartedView: View {
                     .foregroundStyle(DictionaryStyle.accent).accessibilityIdentifier("first-lookup-complete")
                 Text("你已核对一项阅读场景。其他软件和文档仍需分别核对，AI 释义不保证每次正确。")
             }
+            HStack {
+                Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
+                    .accessibilityIdentifier("prepare-browser-extension")
+                Button("选择其他位置…", action: exportExtension)
+                    .accessibilityIdentifier("export-browser-extension")
+                if extensionSetup.prepared != nil {
+                    Button("显示扩展文件夹", action: revealExtension)
+                }
+            }
+            Text(extensionSetup.message).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                .accessibilityIdentifier("browser-extension-preparation-status")
             DictionaryCard {
                 Text("1 · 选择查词服务").font(.system(size: 14, weight: .medium))
                 Text(service.needsSetup ? "尚未选择可用的查词方式。" : "当前：\(service.label)；实际查询仍需下面的自测。")
@@ -60,13 +71,14 @@ struct GettingStartedView: View {
                 Text("3 · 在阅读软件核对选词和原句").font(.system(size: 14, weight: .medium))
                 Text(progress.readingConfirmed ? "已由你确认本次选词、原句和词义对应。" : checkMessage(progress.reading))
                     .accessibilityIdentifier("first-lookup-reading-status")
-                Toggle("我主要在 Chrome、Edge 或 Brave 中阅读", isOn: $browserReading).toggleStyle(.checkbox)
-                if browserReading { browserInstructions }
-                else {
-                    Text("Books、Readest、Markdown 等：选中正文英文，按 ⌥D。\(readiness.permissionLabel)；语境是否可读取还取决于软件和文档。")
-                    Button("查看选词权限", action: onPermission)
-                }
-                Link("打开浏览器查词样例", destination: FirstLookupProgress.readingSampleURL)
+                browserInstructions
+                Divider()
+                Text("Books、Readest、Markdown 等").font(.system(size: 13, weight: .medium))
+                Text("选中正文英文，按 ⌥D。\(readiness.permissionLabel)；语境是否可读取还取决于软件和文档。")
+                Button("查看选词权限", action: onPermission)
+                Link("打开本机阅读查词样例", destination: FirstLookupProgress.readingSampleURL)
+                Text("样例由正在运行的 Dictionary 提供，只展示合成句子，打开时不会查询。")
+                    .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
                 Text("主窗口查询成功不代表阅读软件已接通。浮窗里的选词、原句和词义都对应时，再确认；网页内的说明不算查词结果。")
                 HStack {
                     Button("我已核对，原句和词义正确") { progress.confirmReading() }
@@ -97,9 +109,23 @@ struct GettingStartedView: View {
 
     private var browserInstructions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("导出配套扩展到固定文件夹。在浏览器扩展管理页开启开发者模式，选择“加载已解压的扩展”，打开导出的文件夹。")
-            Button("导出配套浏览器扩展…", action: exportExtension).accessibilityIdentifier("export-browser-extension")
-            if !exportMessage.isEmpty { Text(exportMessage).textSelection(.enabled) }
+            Text("浏览器 · Chrome / Edge / Brave").font(.system(size: 13, weight: .medium))
+            Text("配套扩展文件按版本独立保存。重新打开会核对文件；文件已准备不代表浏览器已连接或查询已通过。")
+            if let prepared = extensionSetup.prepared {
+                Text(prepared.directory.path).font(.system(size: 11)).textSelection(.enabled)
+                    .accessibilityIdentifier("prepared-browser-extension-path")
+                HStack {
+                    Button("显示文件夹", action: revealExtension)
+                    Button(pathCopied ? "已复制文件夹路径" : "复制文件夹路径") {
+                        extensionSetup.refresh()
+                        if let current = extensionSetup.prepared {
+                            NSPasteboard.general.clearContents()
+                            pathCopied = NSPasteboard.general.setString(current.directory.path, forType: .string)
+                        }
+                    }.accessibilityIdentifier("copy-browser-extension-path")
+                }
+            }
+            Text("先点上方“准备浏览器扩展”。在浏览器扩展管理页开启开发者模式，选择“加载已解压的扩展”。可在文件选择窗口按 ⇧⌘G，粘贴上方复制的文件夹路径并打开。只加载显示的配套版本，旧目录保留以便回退。")
             Text("只启用一个 Dictionary Lookup，并只运行一个 Dictionary。菜单栏图标 → Copy extension token；亲自粘贴到扩展并验证保存。不要分享令牌。")
             Text("扩展面板应显示“已连接”和实际快捷键；未绑定时，在浏览器的扩展键盘快捷方式中设置 ⌥D。")
             Text("浏览器扩展查词不要求系统选词权限。若此站点禁止扩展，在浏览器扩展菜单确认站点设置。App 更新不会自动更新已加载的扩展。")
@@ -119,17 +145,19 @@ struct GettingStartedView: View {
         }
     }
 
+    private func revealExtension() {
+        extensionSetup.refresh()
+        if let current = extensionSetup.prepared { NSWorkspace.shared.activateFileViewerSelecting([current.directory]) }
+    }
+
     private func exportExtension() {
         let panel = NSOpenPanel()
         panel.title = "选择扩展的固定存放位置"
-        panel.message = "将创建 Dictionary Browser Extension 文件夹。不会覆盖已有目录或安装浏览器扩展。请勿在加载后移动它。"
+        panel.message = "App 会在所选位置里面创建按扩展版本命名的文件夹。同版本内容一致时直接复用；不会覆盖已有文件或安装浏览器扩展。请勿在加载后移动它。"
         panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let parent = panel.url else { return }
-        do {
-            let destination = try BrowserExtensionExport.export(source: Bundle.main.resourceURL?.appendingPathComponent("BrowserExtension"), parent: parent)
-            exportMessage = "已导出：\(destination.path)\n在浏览器加载此文件夹；更新前保留旧目录以便回退。"
-            NSWorkspace.shared.activateFileViewerSelecting([destination])
-        } catch { exportMessage = error.localizedDescription }
+        extensionSetup.prepare(in: parent)
+        pathCopied = false
     }
 }

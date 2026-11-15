@@ -18,6 +18,7 @@ function fixture(mode = 'success') {
     fs.mkdirSync(resource, {recursive: true});
     fs.writeFileSync(path.join(resource, 'oewn-2025.json.gz'), 'synthetic-resource');
     fs.writeFileSync(path.join(resource, '../AppIcon.icns'), 'synthetic-icon');
+    fs.writeFileSync(path.join(resource, '../ReadingSample.html'), 'synthetic reading sample');
   }
   const tool = `#!${process.execPath}
 const fs = require('node:fs');
@@ -165,6 +166,7 @@ test('QA packaging accepts native SwiftPM flat resource bundles too', async () =
   fs.mkdirSync(directory, {recursive: true});
   fs.writeFileSync(path.join(directory, 'oewn-2025.json.gz'), 'synthetic-flat-resource');
   fs.writeFileSync(path.join(directory, '../AppIcon.icns'), 'synthetic-icon');
+  fs.writeFileSync(path.join(directory, '../ReadingSample.html'), 'synthetic reading sample');
   packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => '');
   assert.match(fs.readFileSync(path.join(f.app, 'Contents/Info.plist'), 'utf8'), /CFBundleIconFile/);
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');
@@ -178,4 +180,13 @@ test('QA packaging also refuses an existing App without touching any contents', 
   assert.throws(() => packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => assert.fail('must not sign')), /EEXIST/);
   assert.equal(fs.readFileSync(path.join(f.app, 'sentinel'), 'utf8'), 'preserve');
   assert.deepEqual(fs.readdirSync(f.app), ['sentinel']);
+});
+
+
+test('QA packaging requires the bundled reading sample before signing', async () => {
+  const {packageApp} = await import('../../scripts/qa-app.mjs');
+  const f = fixture(); fs.mkdirSync(path.dirname(f.app), {recursive:true});
+  const sample=path.join(f.root,'bin/DictionaryApp_DictionaryApp.bundle/Contents/Resources/ReadingSample.html');
+  fs.renameSync(sample,sample+'.retired');
+  assert.throws(()=>packageApp(path.dirname(f.app),path.join(f.root,'bin/DictionaryApp'),{},()=>assert.fail('must not sign')),/reading sample/i);
 });

@@ -1,10 +1,10 @@
 import Foundation
 import Network
 
-/// Minimal HTTP/1.1 server bound to 127.0.0.1 only. Single-route: delegates
+/// Minimal HTTP/1.1 server bound to 127.0.0.1 only. Delegates
 /// every request to the injected handler. Does NOT handle keep-alive,
 /// chunked transfer, pipelining, or HTTPS — by design, since the only
-/// client is a local browser extension making single-shot POSTs.
+/// clients make single-shot extension requests or open the static reading sample.
 final class HTTPServer {
     private let port: UInt16
     private let handler: TranslateHandler

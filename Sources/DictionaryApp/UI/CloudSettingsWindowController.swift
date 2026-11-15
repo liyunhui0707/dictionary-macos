@@ -10,12 +10,14 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let progress: FirstLookupProgress
     private let support: SupportDiagnostics
     private let booksScreenSettings: BooksScreenSettings
+    private let extensionSetup: BrowserExtensionSetup
     private let onExample: () -> Void
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
          serviceSettings: LookupServiceSettings? = nil, progress: FirstLookupProgress? = nil,
          support: SupportDiagnostics? = nil,
          booksScreenSettings: BooksScreenSettings? = nil,
+         extensionSetup: BrowserExtensionSetup? = nil,
          onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings
@@ -25,6 +27,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         self.progress = progress ?? FirstLookupProgress()
         self.support = support ?? SupportDiagnostics()
         self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
+        self.extensionSetup = extensionSetup ?? BrowserExtensionSetup()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
@@ -41,7 +44,8 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         let host = NSHostingController(rootView:
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
                     readiness: readiness, serviceSettings: serviceSettings, progress: progress, support: support,
-                    booksScreenSettings: booksScreenSettings, onExample: onExample).frame(width: 580, height: height))
+                    booksScreenSettings: booksScreenSettings, extensionSetup: extensionSetup,
+                    onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -72,13 +76,15 @@ struct DictionarySettingsView: View {
     @ObservedObject var progress: FirstLookupProgress
     @ObservedObject var support: SupportDiagnostics
     @ObservedObject var booksScreenSettings: BooksScreenSettings
+    @ObservedObject var extensionSetup: BrowserExtensionSetup
     let onExample: () -> Void
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
          readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil,
          progress: FirstLookupProgress? = nil, support: SupportDiagnostics? = nil,
-         booksScreenSettings: BooksScreenSettings? = nil, onExample: @escaping () -> Void = {}) {
+         booksScreenSettings: BooksScreenSettings? = nil, extensionSetup: BrowserExtensionSetup? = nil,
+         onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
@@ -86,6 +92,7 @@ struct DictionarySettingsView: View {
         self.progress = progress ?? FirstLookupProgress()
         self.support = support ?? SupportDiagnostics()
         self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
+        self.extensionSetup = extensionSetup ?? BrowserExtensionSetup()
         _navigation = StateObject(wrappedValue: SettingsNavigation(section))
     }
 
@@ -109,7 +116,8 @@ struct DictionarySettingsView: View {
                 Group {
                     switch navigation.section {
                     case .started: GettingStartedView(service: serviceSettings, local: localSettings,
-                        readiness: readiness, progress: progress, onService: { navigation.section = .service },
+                        readiness: readiness, progress: progress, extensionSetup: extensionSetup,
+                        onService: { navigation.section = .service },
                         onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general }, onExample: onExample)
                     case .general: general
                     case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
@@ -122,8 +130,10 @@ struct DictionarySettingsView: View {
                 }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
             }
         }.background(DictionaryStyle.paper).foregroundStyle(DictionaryStyle.ink).tint(DictionaryStyle.accent)
-            .onAppear { readiness.refresh() }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readiness.refresh() }
+            .onAppear { readiness.refresh(); extensionSetup.refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                readiness.refresh(); extensionSetup.refresh()
+            }
     }
 
     private var general: some View {

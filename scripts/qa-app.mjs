@@ -121,6 +121,8 @@ export function packageApp(out, binary, metadata, invoke=run, signing=signingOpt
   const resourceName='DictionaryApp_DictionaryApp.bundle';
   const resource=path.join(path.dirname(binary),resourceName);
   if(!['Contents/Resources',''].some(prefix=>fs.existsSync(path.join(resource,prefix,'EnglishDictionary/oewn-2025.json.gz'))) || fs.lstatSync(resource).isSymbolicLink()) throw Error('Missing or unsafe dictionary resource bundle');
+  const sample=['Contents/Resources/ReadingSample.html','ReadingSample.html'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
+  if(!sample || fs.lstatSync(sample).isSymbolicLink() || !fs.lstatSync(sample).isFile()) throw Error('Missing or unsafe reading sample resource');
   fs.cpSync(resource,path.join(app,'Contents/Resources',resourceName),{recursive:true,errorOnExist:true,force:false});
   const icon = ['Contents/Resources/AppIcon.icns','AppIcon.icns'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
   if(!icon || fs.lstatSync(icon).isSymbolicLink() || !fs.lstatSync(icon).isFile()) throw Error('Missing or unsafe app icon resource');
