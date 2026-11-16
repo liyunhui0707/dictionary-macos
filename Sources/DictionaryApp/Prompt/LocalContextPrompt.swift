@@ -1,8 +1,9 @@
 import Foundation
 
-/// Contextual expression lookup, using only an explicitly supplied sentence.
-/// Single-word candidates did not pass quality evaluation and retain their old path.
+/// Uses only an explicitly supplied sentence. The original expression scope is
+/// retained for existing models; the compared reading scope is opt-in by model.
 enum LocalContextPrompt {
+    enum Scope { case expressions, evaluatedReading }
     static var responseFormat: [String: Any] {
         ["type": "object", "properties": [
             "example_translation": ["type": "string"],
@@ -14,9 +15,9 @@ enum LocalContextPrompt {
          "additionalProperties": false]
     }
 
-    static func applies(target: String, context: String, sentence: String?) -> Bool {
+    static func applies(target: String, context: String, sentence: String?, scope: Scope = .expressions) -> Bool {
         guard !target.isEmpty, target.count <= 96,
-              (2...5).contains(target.split(whereSeparator: \.isWhitespace).count),
+              (scope == .evaluatedReading ? 1...5 : 2...5).contains(target.split(whereSeparator: \.isWhitespace).count),
               let sentence, !sentence.isEmpty, sentence != target,
               sentence.range(of: target, options: .literal) != nil,
               let data = context.data(using: .utf8),
@@ -25,6 +26,11 @@ enum LocalContextPrompt {
               let text = document["context_text"] as? String,
               text.range(of: sentence, options: .literal) != nil else { return false }
         if document["mode"] as? String == "manual" { return document["selection"] is NSNull }
+        // Heuristic text carries no exact-position claim. It must still have an
+        // explicitly supplied sentence; never infer one from a fragment here.
+        if scope == .evaluatedReading, document["mode"] as? String == "heuristic" {
+            return document["selection"] is NSNull
+        }
         guard document["mode"] as? String == "anchored",
               let selected = document["selection"] as? [String: Any],
               selected["unit"] as? String == "utf16", selected["text"] as? String == target,

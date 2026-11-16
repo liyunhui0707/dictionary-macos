@@ -136,7 +136,8 @@ struct NativeAppearanceTests {
             savedModel: nil, probe: probe, persistModel: { _ in })
         for section in DictionarySettingsSection.allCases {
             try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: section)
-                .frame(width: 580, height: 500), size: NSSize(width: 580, height: 500)) { view in
+                .frame(width: 580, height: 500), size: NSSize(width: 580, height: 500),
+                preview: section == .local ? "local-model-help-light" : nil) { view in
                 #expect(view.fittingSize.width <= 580)
                 #expect(view.fittingSize.height <= 500)
             }

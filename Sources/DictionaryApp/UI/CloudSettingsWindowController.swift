@@ -267,6 +267,16 @@ struct LocalModelSettingsView: View {
                         }
                     }
                 }
+                DisclosureGroup("可选的语境对照模型") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(OllamaProvider.evaluatedReadingModel).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        Text("本机小规模合成对照中，搭配、存在句和未知标签有所改善；仍有漏译等问题，不保证每次正确。")
+                        Text("需要另行下载约 6.6 GB，运行时还需内存。准备好后检查连接，在已安装列表中选择并保存，重新打开 Dictionary 生效。不会自动下载或更换当前模型。")
+                        Text("ollama pull \(OllamaProvider.evaluatedReadingModel)")
+                            .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        Link("查看该模型的官方说明", destination: URL(string: "https://ollama.com/library/qwen3.5:9b-q4_K_M")!)
+                    }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                }.font(.system(size: 12))
                 if settings.configuration.environmentOverride {
                     Text("本次启动指定了模型。退出后以普通方式打开 Dictionary，才能在这里更改。")
                         .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)

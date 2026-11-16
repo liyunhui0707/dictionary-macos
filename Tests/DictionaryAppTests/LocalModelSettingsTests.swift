@@ -5,6 +5,21 @@ import Testing
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct LocalModelSettingsTests {
+    @Test func discoveringComparedModelDoesNotSwitchTheDefaultOrPersistWithoutSaving() async {
+        let model = OllamaProvider.evaluatedReadingModel
+        let probe = ModelProbeFixture(names: [model, LocalModelConfiguration.defaultModel])
+        var saved: String?
+        let settings = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil),
+            savedModel: nil, probe: probe, persistModel: { saved = $0 })
+        await settings.check()
+        #expect(settings.selectedModel == LocalModelConfiguration.defaultModel && saved == nil)
+        settings.selectedModel = model
+        #expect(settings.configuration.model == LocalModelConfiguration.defaultModel && saved == nil)
+        #expect(settings.saveSelection())
+        #expect(saved == model && settings.restartRequired)
+        #expect(settings.configuration.model == LocalModelConfiguration.defaultModel)
+    }
+
     @Test func configurationPreservesExplicitLaunchOverridesAndIgnoresInvalidSavedNames() {
         #expect(LocalModelConfiguration(environment: [:], savedModel: nil).model == "qwen2.5:7b")
         #expect(LocalModelConfiguration(environment: [:], savedModel: "other:small").model == "other:small")

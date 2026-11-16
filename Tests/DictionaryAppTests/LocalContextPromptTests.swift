@@ -3,6 +3,54 @@ import Testing
 @testable import DictionaryApp
 
 struct LocalContextPromptTests {
+    @Test func evaluatedModelUsesTheComparedPromptForBothEvidenceRoutes() async throws {
+        for (set, route) in [("acceptance", "anchored"), ("stage-verification", "heuristic")] {
+            let run = try DictionaryQualityRun(environment: ["DICTIONARY_QUALITY_SET": set,
+                "DICTIONARY_QUALITY_ROUTE": route, "DICTIONARY_QUALITY_ROUNDS": "1"])
+            for sample in run.samples where !sample.context.isEmpty {
+                let request = try run.request(for: sample)
+                let sentence = try #require(request.containingSentence)
+                let actual = try await OllamaProvider(model: "qwen3.5:9b-q4_K_M").preparePrompt(
+                    target: request.target, context: request.providerContext, containingSentence: sentence,
+                    targetLanguage: "简体中文")
+                let compared = LocalContextPrompt.build(target: request.target, context: request.providerContext,
+                    sentence: sentence, targetLanguage: "简体中文")
+                #expect(actual.system == compared.system && actual.userInstruction == compared.userInstruction)
+            }
+        }
+    }
+
+    @Test func readingProfileRequiresAProvidedSentenceAndDoesNotApplyToOtherModelTags() async throws {
+        let source = "She runs the shop."
+        let request = try LookupRequest.captured(target: "runs", context: source, sentence: source, source: "Synthetic",
+            capture: SelectionLocation(reliability: .heuristic, method: .axTreeWalk))
+        for model in ["qwen2.5:7b", "qwen3:14b", "qwen3.5:9b", "qwen3.5:latest"] {
+            let prompt = try await OllamaProvider(model: model).preparePrompt(target: request.target,
+                context: request.providerContext, containingSentence: source, targetLanguage: "简体中文")
+            let baseline = PromptBuilder.build(target: request.target, context: request.providerContext,
+                containingSentence: source, targetLanguage: "简体中文")
+            #expect(prompt.system == baseline.system && prompt.userInstruction == baseline.userInstruction)
+        }
+        let client = OllamaProvider(model: "qwen3.5:9b-q4_K_M", dictionary: EnglishDictionary(resourceURL: nil))
+        for sentence: String? in [nil, "", "Another runs sentence."] {
+            let actual = try await client.preparePrompt(target: request.target, context: request.providerContext,
+                containingSentence: sentence, targetLanguage: "简体中文")
+            let baseline = PromptBuilder.build(target: request.target, context: request.providerContext,
+                containingSentence: sentence, targetLanguage: "简体中文")
+            #expect(actual.system == baseline.system && actual.userInstruction == baseline.userInstruction)
+        }
+        for mode in ["unverified", "targetOnly", "unexpected", "anchored"] {
+            let document: [String: Any] = ["format": "dictionary_context_v1", "mode": mode,
+                "context_text": source, "selection": NSNull()]
+            let context = String(decoding: try JSONSerialization.data(withJSONObject: document), as: UTF8.self)
+            let actual = try await client.preparePrompt(target: "runs", context: context,
+                containingSentence: source, targetLanguage: "简体中文")
+            let baseline = PromptBuilder.build(target: "runs", context: context,
+                containingSentence: source, targetLanguage: "简体中文")
+            #expect(actual.system == baseline.system && actual.userInstruction == baseline.userInstruction)
+        }
+    }
+
     @Test func onlySuppliedSentencesWithEligibleEvidenceUseNewRoute() throws {
         let sentence = "She looked after the shop."
         let request = try LookupRequest.manual(target: "looked after", context: sentence)
@@ -71,11 +119,45 @@ struct LocalContextPromptTests {
 
 @Suite(.serialized)
 struct OllamaContextTransportTests {
-    private func provider() -> OllamaProvider {
+    private func provider(model: String = "qwen2.5:7b", disableThinking:Bool = false) -> OllamaProvider {
         ContextTransport.requests = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ContextTransport.self]
-        return OllamaProvider(dictionary: EnglishDictionary(resourceURL: nil), session: URLSession(configuration: configuration))
+        return OllamaProvider(model: model, disableThinking:disableThinking, dictionary: EnglishDictionary(resourceURL: nil), session: URLSession(configuration: configuration))
+    }
+
+    @Test func evaluatedReadingModelUsesComparedSettingsWithoutInventingMissingSentences() async throws {
+        let client = provider(model: "qwen3.5:9b-q4_K_M")
+        let source = "She runs the shop."
+        let reading = try LookupRequest.captured(target: "runs", context: source, sentence: source, source: "Synthetic",
+            capture: SelectionLocation(reliability: .heuristic, method: .axTreeWalk))
+        _ = try await client.translate(target: reading.target, context: reading.providerContext,
+            containingSentence: reading.containingSentence, targetLanguage: "简体中文")
+        let body = try ContextTransport.body(try #require(ContextTransport.requests.last))
+        #expect(body["think"] as? Bool == false)
+        #expect(body["options"] as? [String: Int] == ["temperature": 0])
+        #expect(body["format"] is [String: Any])
+        let messages = try #require(body["messages"] as? [[String: String]])
+        let compared = LocalContextPrompt.build(target: reading.target, context: reading.providerContext,
+            sentence: source, targetLanguage: "简体中文")
+        #expect(messages[0]["content"] == compared.system && messages[1]["content"] == compared.userInstruction)
+
+        _ = try await client.translate(target: "runs", context: reading.providerContext,
+            containingSentence: nil, targetLanguage: "简体中文")
+        let fragment = try ContextTransport.body(try #require(ContextTransport.requests.last))
+        #expect(fragment["format"] as? String == "json" && fragment["options"] == nil)
+        #expect(fragment["think"] as? Bool == false)
+    }
+
+    @Test func thinkingIsDisabledOnlyWhenExplicitlyRequested() async throws {
+        for disabled in [false,true] {
+            let client=provider(disableThinking:disabled)
+            _ = try await client.translate(target:"bank",context:"bank",containingSentence:nil,targetLanguage:"简体中文")
+            let body=try ContextTransport.body(try #require(ContextTransport.requests.last))
+            if disabled { #expect(body["think"] as? Bool == false) }
+            else { #expect(body["think"] == nil) }
+            #expect(body["format"] as? String == "json" && body["options"] == nil)
+        }
     }
 
     @Test func suppliedSentenceSendsConstrainedFormatInOneRequest() async throws {
