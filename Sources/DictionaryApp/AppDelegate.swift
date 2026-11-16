@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.configuredCloudProvider = provider
             self?.serviceSettings.setCloudAvailable(provider != nil)
         })
-    private let readiness = AppReadiness.live()
+    private lazy var readiness = AppReadiness.live(diagnostics: diagnostics)
     private lazy var updateWindow = ReleaseUpdateWindow(installed:
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "源码构建")
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
