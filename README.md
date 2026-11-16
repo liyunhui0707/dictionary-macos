@@ -26,7 +26,7 @@ AI 释义用于辅助理解，可能出现错误。参考词典与 AI 结果分�
 
 ## 安装与开始使用
 
-[0.9.1 本地候选](docs/releases/0.9.1.md)已完成两台 Mac 的升级和指定 Books 合成用例验收，尚未公开发布；可下载版本仍以 Releases 为准。
+最新公开版本为 [0.9.1](https://github.com/liyunhui0707/dictionary-macos/releases/tag/v0.9.1)，已完成两台 Mac 的升级和指定 Books 合成用例验收。[版本说明](docs/releases/0.9.1.md)列出验收范围与限制；下载文件以 Releases 为准。
 
 系统要求为 **macOS 14 或更新版本**。下载时请选择与你的芯片架构相符的安装包。
 正式应用安装包以 Releases 实际列出的资产为准；没有安装包时可按下方步骤从源码构建。

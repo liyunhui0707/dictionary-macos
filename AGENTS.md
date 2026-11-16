@@ -8,6 +8,10 @@ and prioritize reliable target/context capture and useful contextual explanation
 - Use synthetic samples for tests and screenshots. Do not read protected secret files.
 - Run focused checks, then relevant regression before delivery. Automated capture
   tests do not prove semantic quality or support in every application.
+- Reuse matching acceptance evidence for unchanged paths. Prefer automated
+  regression and consolidate essential new manual checks; do not repeatedly ask
+  the owner to restart apps, recheck permissions or repeat accepted examples.
+  Keep unperformed checks and current failures explicit.
 - Keep version changes explicit and follow the release process in docs/releasing.md.
 - Never reset Accessibility permission as a routine build step. Preserve signing identity.
 - Respect third-party notices. Do not relabel model output as a dictionary definition.

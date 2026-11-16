@@ -6,8 +6,8 @@ not a requirement to buy membership before this channel can ship. Do not describ
 these artifacts as Apple-verified or bypass macOS security to test them.
 
 1. Explicitly approve a SemVer version in `VERSION`. The selected version for this
-   local delivery candidate is 0.9.1 (Chromium extension 0.2.1), explicitly approved for local preparation and scoped two-Mac upgrade acceptance only.
-   Public delivery and installed-app replacement are separate decisions. App packagers read that file; companion extension versions
+   released version is 0.9.1 (Chromium extension 0.2.1), explicitly approved for preparation, scoped two-Mac upgrades and public delivery.
+   Future versions and their delivery scope need their own explicit decision. App packagers read that file; companion extension versions
    change only when their implementation/protocol requires it.
 2. Run `swift test` and `node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs`.
    Optional live model tests require separately authorized data, credentials and
@@ -28,11 +28,18 @@ these artifacts as Apple-verified or bypass macOS security to test them.
    Checksums are not identity authentication. Never upload the private build log,
    scratch checkout, local certificates, keys or QA evidence. Keep certificate-signed
    local daily/testing builds separate from public ad-hoc assets.
-6. On another Mac, verify exact hashes, install without a checkout/Xcode, first-use
+6. Scope new manual acceptance to changed behavior and distribution risk. Reuse
+   recorded prior acceptance for unchanged service/error/recovery paths together
+   with current relevant automated regression; identify the source version and
+   do not describe reused evidence as a new exact-binary run. Consolidate essential
+   owner checks instead of repeating them on both Macs after every small change.
+   On another Mac, verify exact hashes, install without a checkout/Xcode, first-use
    configuration, one contextual lookup, missing-service recovery, exit and upgrade.
    Preserve the previous app for rollback. SCP transfer does not reproduce browser
    quarantine: browser-download first-open acceptance is recorded separately.
    Any security/accessibility consent is performed normally by the owner.
+   Required checks that actually fail still block their dependent delivery;
+   missing or unperformed evidence must remain explicit.
 7. Only publish a GitHub Release when required checks for that candidate pass.
    Include exact tested OS/architecture, version, commit, ZIP/DMG, SHA256SUMS,
    `release-manifest.json`, notices, setup requirements and unnotarized status.
