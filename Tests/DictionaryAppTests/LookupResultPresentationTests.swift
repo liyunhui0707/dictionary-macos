@@ -1,7 +1,23 @@
+import Foundation
 import Testing
 @testable import DictionaryApp
 
 struct LookupResultPresentationTests {
+    @Test func contextualResultsWithholdUnverifiedExtrasWithoutRewritingTheRawAnswer() throws {
+        let answer=Translation(meaningInContext:"犯",literalGloss:"制作",partOfSpeech:"verb",
+            exampleTranslation:"我们通过犯错并纠正它们来学习。",alternatives:["制造"])
+        let encoder=JSONEncoder();encoder.outputFormatting=[.sortedKeys]
+        let before=try encoder.encode(answer)
+        let contextual=try LookupRequest.manual(target:"making",context:"We learn by making mistakes and correcting them.")
+        let reading=LookupResultPresentation(request:contextual,translation:answer)
+        #expect(reading.additionalMeanings.literal == nil && reading.additionalMeanings.alternatives.isEmpty)
+        #expect(reading.sentenceTranslation == answer.exampleTranslation)
+        let wordOnly=LookupResultPresentation(request:try .manual(target:"making",context:""),translation:answer)
+        #expect(wordOnly.additionalMeanings.literal == "制作" && wordOnly.additionalMeanings.alternatives == ["制造"])
+        let after = try encoder.encode(answer)
+        #expect(answer.meaningInContext == "犯" && after == before)
+    }
+
     @Test func unavailableSourceSentenceCannotBeCreatedByProviderOutput() throws {
         let request=try LookupRequest.captured(target:"bank",context:"We sat on the\nbank of the river.",sentence:nil,source:"Chromium",
             capture:captureMetadata(start:14,end:18,reason:.sentenceUnavailable))

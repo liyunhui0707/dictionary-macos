@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var cloudSettingsWindow = CloudSettingsWindowController(settings: cloudSettings, localSettings: localSettings,
         readiness: readiness, serviceSettings: serviceSettings, progress: firstLookupProgress, support: support,
         booksScreenSettings: booksScreenSettings, extensionSetup: extensionSetup,
+        onCopyExtensionToken: { [weak self] in self?.copyExtensionToken() ?? false },
         onExample: { [weak self] in self?.prepareExample() })
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
@@ -335,9 +336,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func copyTokenToClipboard() {
+        _ = copyExtensionToken()
+    }
+
+    private func copyExtensionToken() -> Bool {
         let token = tokenStore.token
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(token, forType: .string)
+        return NSPasteboard.general.setString(token, forType: .string)
     }
 
     @objc private func regenerateToken() {
@@ -391,7 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             permission:screenEnabled && CGPreflightScreenCaptureAccess(),nativeHasSentence:hasSentence,
             isCurrent:isCurrent, snapshot:{ await BooksScreenCapture.snapshot(source:source,isCurrent:isCurrent,failed:{screenStatus=$0}) },
             native:{ try await pipeline.capture(isSafari:Self.safariBundleIDs.contains(bundleID),isBooks:isBooks) },
-            recognize:{ await ScreenTextRecognition.lines(snapshot:$0,target:$1) })
+            recognize:{ await ScreenTextRecognition.recognize(snapshot:$0,target:$1,timeout:$2) })
         if captured.containingSentence == nil, let screenStatus { captured.diagnostics.screenContext=screenStatus }
         return captured
     }

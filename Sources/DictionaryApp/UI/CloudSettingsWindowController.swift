@@ -12,14 +12,17 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
     private let booksScreenSettings: BooksScreenSettings
     private let extensionSetup: BrowserExtensionSetup
     private let onExample: () -> Void
+    private let onCopyExtensionToken: () -> Bool
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, readiness: AppReadiness? = nil,
          serviceSettings: LookupServiceSettings? = nil, progress: FirstLookupProgress? = nil,
          support: SupportDiagnostics? = nil,
          booksScreenSettings: BooksScreenSettings? = nil,
          extensionSetup: BrowserExtensionSetup? = nil,
+         onCopyExtensionToken: @escaping () -> Bool = { false },
          onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
+        self.onCopyExtensionToken = onCopyExtensionToken
         self.settings = settings
         self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
@@ -45,7 +48,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
                     readiness: readiness, serviceSettings: serviceSettings, progress: progress, support: support,
                     booksScreenSettings: booksScreenSettings, extensionSetup: extensionSetup,
-                    onExample: onExample).frame(width: 580, height: height))
+                    onCopyExtensionToken: onCopyExtensionToken, onExample: onExample).frame(width: 580, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -65,7 +68,10 @@ enum DictionarySettingsSection: String, CaseIterable {
 @MainActor
 private final class SettingsNavigation: ObservableObject {
     @Published var section: DictionarySettingsSection
-    init(_ section: DictionarySettingsSection) { self.section = section }
+    @Published var readingRoute: ReadingSetupRoute
+    init(_ section: DictionarySettingsSection, readingRoute: ReadingSetupRoute) {
+        self.section = section; self.readingRoute = readingRoute
+    }
 }
 
 struct DictionarySettingsView: View {
@@ -78,14 +84,18 @@ struct DictionarySettingsView: View {
     @ObservedObject var booksScreenSettings: BooksScreenSettings
     @ObservedObject var extensionSetup: BrowserExtensionSetup
     let onExample: () -> Void
+    let onCopyExtensionToken: () -> Bool
     @StateObject private var navigation: SettingsNavigation
 
     init(settings: CloudSettings, localSettings: LocalModelSettings, section: DictionarySettingsSection = .general,
          readiness: AppReadiness? = nil, serviceSettings: LookupServiceSettings? = nil,
          progress: FirstLookupProgress? = nil, support: SupportDiagnostics? = nil,
          booksScreenSettings: BooksScreenSettings? = nil, extensionSetup: BrowserExtensionSetup? = nil,
+         readingRoute: ReadingSetupRoute = .browser,
+         onCopyExtensionToken: @escaping () -> Bool = { false },
          onExample: @escaping () -> Void = {}) {
         self.onExample = onExample
+        self.onCopyExtensionToken = onCopyExtensionToken
         self.settings = settings; self.localSettings = localSettings
         self.readiness = readiness ?? .preview()
         self.serviceSettings = serviceSettings ?? .preview()
@@ -93,7 +103,7 @@ struct DictionarySettingsView: View {
         self.support = support ?? SupportDiagnostics()
         self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
         self.extensionSetup = extensionSetup ?? BrowserExtensionSetup()
-        _navigation = StateObject(wrappedValue: SettingsNavigation(section))
+        _navigation = StateObject(wrappedValue: SettingsNavigation(section, readingRoute: readingRoute))
     }
 
     var body: some View {
@@ -117,8 +127,10 @@ struct DictionarySettingsView: View {
                     switch navigation.section {
                     case .started: GettingStartedView(service: serviceSettings, local: localSettings,
                         readiness: readiness, progress: progress, extensionSetup: extensionSetup,
+                        booksScreenSettings: booksScreenSettings, readingRoute: $navigation.readingRoute,
                         onService: { navigation.section = .service },
-                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general }, onExample: onExample)
+                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general },
+                        onExample: onExample, onCopyExtensionToken: onCopyExtensionToken)
                     case .general: general
                     case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
                     case .local: LocalModelSettingsView(settings: localSettings)
@@ -130,9 +142,9 @@ struct DictionarySettingsView: View {
                 }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
             }
         }.background(DictionaryStyle.paper).foregroundStyle(DictionaryStyle.ink).tint(DictionaryStyle.accent)
-            .onAppear { readiness.refresh(); extensionSetup.refresh() }
+            .onAppear { readiness.refresh(); booksScreenSettings.refresh(); extensionSetup.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                readiness.refresh(); extensionSetup.refresh()
+                readiness.refresh(); booksScreenSettings.refresh(); extensionSetup.refresh()
             }
     }
 
@@ -255,6 +267,16 @@ struct LocalModelSettingsView: View {
                         }
                     }
                 }
+                DisclosureGroup("可选的语境对照模型") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(OllamaProvider.evaluatedReadingModel).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        Text("本机小规模合成对照中，搭配、存在句和未知标签有所改善；仍有漏译等问题，不保证每次正确。")
+                        Text("需要另行下载约 6.6 GB，运行时还需内存。准备好后检查连接，在已安装列表中选择并保存，重新打开 Dictionary 生效。不会自动下载或更换当前模型。")
+                        Text("ollama pull \(OllamaProvider.evaluatedReadingModel)")
+                            .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        Link("查看该模型的官方说明", destination: URL(string: "https://ollama.com/library/qwen3.5:9b-q4_K_M")!)
+                    }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                }.font(.system(size: 12))
                 if settings.configuration.environmentOverride {
                     Text("本次启动指定了模型。退出后以普通方式打开 Dictionary，才能在这里更改。")
                         .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)

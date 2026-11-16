@@ -1,17 +1,25 @@
 import AppKit
 import SwiftUI
 
+enum ReadingSetupRoute: String, CaseIterable {
+    case browser = "浏览器", books = "Books", native = "其他阅读软件"
+}
+
 struct GettingStartedView: View {
     @ObservedObject var service: LookupServiceSettings
     @ObservedObject var local: LocalModelSettings
     @ObservedObject var readiness: AppReadiness
     @ObservedObject var progress: FirstLookupProgress
     @ObservedObject var extensionSetup: BrowserExtensionSetup
+    @ObservedObject var booksScreenSettings: BooksScreenSettings
+    @Binding var readingRoute: ReadingSetupRoute
     let onService: () -> Void
     let onLocal: () -> Void
     let onPermission: () -> Void
     let onExample: () -> Void
+    let onCopyExtensionToken: () -> Bool
     @State private var pathCopied = false
+    @State private var tokenCopied: Bool?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -24,17 +32,24 @@ struct GettingStartedView: View {
                     .foregroundStyle(DictionaryStyle.accent).accessibilityIdentifier("first-lookup-complete")
                 Text("你已核对一项阅读场景。其他软件和文档仍需分别核对，AI 释义不保证每次正确。")
             }
-            HStack {
-                Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
-                    .accessibilityIdentifier("prepare-browser-extension")
-                Button("选择其他位置…", action: exportExtension)
-                    .accessibilityIdentifier("export-browser-extension")
-                if extensionSetup.prepared != nil {
-                    Button("显示扩展文件夹", action: revealExtension)
+            Picker("阅读准备", selection: $readingRoute) {
+                ForEach(ReadingSetupRoute.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).accessibilityIdentifier("reading-setup-route")
+            if readingRoute == .browser {
+                HStack {
+                    Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
+                        .accessibilityIdentifier("prepare-browser-extension")
+                    Button("选择其他位置…", action: exportExtension)
+                        .accessibilityIdentifier("export-browser-extension")
+                    if extensionSetup.prepared != nil {
+                        Button("显示扩展文件夹", action: revealExtension)
+                    }
                 }
+                Text(extensionSetup.message).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                    .accessibilityIdentifier("browser-extension-preparation-status")
+            } else {
+                nativePreparationStatus
             }
-            Text(extensionSetup.message).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-                .accessibilityIdentifier("browser-extension-preparation-status")
             DictionaryCard {
                 Text("1 · 选择查词服务").font(.system(size: 14, weight: .medium))
                 Text(service.needsSetup ? "尚未选择可用的查词方式。" : "当前：\(service.label)；实际查询仍需下面的自测。")
@@ -71,14 +86,19 @@ struct GettingStartedView: View {
                 Text("3 · 在阅读软件核对选词和原句").font(.system(size: 14, weight: .medium))
                 Text(progress.readingConfirmed ? "已由你确认本次选词、原句和词义对应。" : checkMessage(progress.reading))
                     .accessibilityIdentifier("first-lookup-reading-status")
-                browserInstructions
-                Divider()
-                Text("Books、Readest、Markdown 等").font(.system(size: 13, weight: .medium))
-                Text("选中正文英文，按 ⌥D。\(readiness.permissionLabel)；语境是否可读取还取决于软件和文档。")
-                Button("查看选词权限", action: onPermission)
-                Link("打开本机阅读查词样例", destination: FirstLookupProgress.readingSampleURL)
-                Text("样例由正在运行的 Dictionary 提供，只展示合成句子，打开时不会查询。")
-                    .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
+                if readingRoute == .browser {
+                    browserInstructions
+                    Link("打开浏览器查词样例", destination: FirstLookupProgress.readingSampleURL)
+                    Text("样例由正在运行的 Dictionary 提供，只展示合成句子，打开时不会查询。")
+                        .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
+                } else {
+                    Text(readingRoute == .books ? "Books" : "Readest、Markdown、TextEdit 等")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("选中正文英文，按 ⌥D。语境是否可读取还取决于软件和文档。")
+                    if readingRoute == .books {
+                        Text("优先读取 Books 提供的原句；无法定位时，可在“通用”自行开启屏幕语境并授权。保持鼠标在选词旁，先核对屏幕预览，再确认查询；位置不明确或跨页时仍可能缺少原句。")
+                    }
+                }
                 Text("主窗口查询成功不代表阅读软件已接通。浮窗里的选词、原句和词义都对应时，再确认；网页内的说明不算查词结果。")
                 HStack {
                     Button("我已核对，原句和词义正确") { progress.confirmReading() }
@@ -94,6 +114,23 @@ struct GettingStartedView: View {
                 Link("安装、升级与回退指南", destination: URL(string: "https://github.com/liyunhui0707/dictionary-macos/blob/main/docs/guide.md")!)
             }
         }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var nativePreparationStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(readiness.permissionLabel).accessibilityIdentifier("reading-selection-permission")
+            if readingRoute == .books {
+                Text(!booksScreenSettings.enabled ? "Books 屏幕语境未开启，当前只使用普通选词路径。" :
+                    booksScreenSettings.permissionGranted ? "Books 屏幕语境已开启，每次识别后仍需你核对原句。" :
+                    "Books 屏幕语境已开启，但屏幕录制权限尚未开启。")
+                    .accessibilityIdentifier("books-preparation-status")
+                Button("查看选词与 Books 屏幕语境设置", action: onPermission)
+            } else {
+                Button("查看选词权限", action: onPermission)
+            }
+            Text("权限开启不代表所有软件都能提供原句。先在你使用的正文中完成一次核对。")
+                .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
+        }
     }
 
     private var nextStep: String {
@@ -126,7 +163,14 @@ struct GettingStartedView: View {
                 }
             }
             Text("先点上方“准备浏览器扩展”。在浏览器扩展管理页开启开发者模式，选择“加载已解压的扩展”。可在文件选择窗口按 ⇧⌘G，粘贴上方复制的文件夹路径并打开。只加载显示的配套版本，旧目录保留以便回退。")
-            Text("只启用一个 Dictionary Lookup，并只运行一个 Dictionary。菜单栏图标 → Copy extension token；亲自粘贴到扩展并验证保存。不要分享令牌。")
+            Text("只启用一个 Dictionary Lookup，并只运行一个 Dictionary。复制配对令牌后，亲自粘贴到扩展并验证保存。不要分享令牌。")
+            Button("复制配对令牌") { tokenCopied = onCopyExtensionToken() }
+                .accessibilityIdentifier("copy-extension-pairing-token")
+            if let tokenCopied {
+                Text(tokenCopied ? "已复制。请到浏览器的 Dictionary Lookup 扩展中粘贴并验证保存；复制成功不代表已连接。" :
+                    "未能复制配对令牌，请重试。")
+                    .accessibilityIdentifier("extension-pairing-copy-status")
+            }
             Text("扩展面板应显示“已连接”和实际快捷键；未绑定时，在浏览器的扩展键盘快捷方式中设置 ⌥D。")
             Text("浏览器扩展查词不要求系统选词权限。若此站点禁止扩展，在浏览器扩展菜单确认站点设置。App 更新不会自动更新已加载的扩展。")
         }

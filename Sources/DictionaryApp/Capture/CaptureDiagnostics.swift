@@ -78,6 +78,8 @@ struct CaptureIssue: Codable, Equatable {
 
 struct CaptureDetails: Codable {
     var screenContext: ScreenContextStatus? = nil
+    var screenRecognitionBudgetMilliseconds: Int? = nil
+    var screenRecognitionElapsedMilliseconds: Int? = nil
     var strategy: CaptureStrategy? = nil
     var issues: [CaptureIssue] = []
     var accessibilityTrusted: Bool? = nil

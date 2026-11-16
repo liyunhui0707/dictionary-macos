@@ -5,6 +5,31 @@ import Testing
 @testable import DictionaryApp
 
 struct ScreenTextRecognitionTests {
+    @Test func timeoutCancelsRecognitionAndDiscardsALateReply() async {
+        let cancelled = RecognitionCancellationCount()
+        var complete: ((ScreenTextRecognition.Result) -> Void)?
+        let result = await ScreenTextRecognition.perform(timeout: 0.01, cancel: { cancelled.increment() }) {
+            complete = $0
+        }
+        guard case .timedOut = result else { Issue.record("Timeout was lost"); return }
+        #expect(cancelled.value == 1)
+        // A native completion can arrive after cancellation. It must not resume twice.
+        complete?(.recognized([]))
+    }
+
+    @Test func successfulEmptyRecognitionAndFailureRemainDistinct() async {
+        let cancelled = RecognitionCancellationCount()
+        let empty = await ScreenTextRecognition.perform(timeout: 0.02, cancel: { cancelled.increment() }) {
+            $0(.recognized([]))
+        }
+        guard case .recognized(let lines) = empty else { Issue.record("Empty result was lost"); return }
+        #expect(lines.isEmpty)
+        let failed = await ScreenTextRecognition.perform(timeout: 0.02, cancel: {}) { $0(.failed) }
+        guard case .failed = failed else { Issue.record("Failure was lost"); return }
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(cancelled.value == 0)
+    }
+
     @MainActor
     @Test func windowLocalCropOwnsOnlyTheRequestedPixelsAcrossNegativeDisplayOrigins() throws {
         func image(outside:CGFloat) throws -> CGImage {
@@ -28,7 +53,9 @@ struct ScreenTextRecognitionTests {
             space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
         context.setFillColor(CGColor(gray:1,alpha:1));context.fill(CGRect(x:0,y:0,width:1000,height:360))
         let font=CTFontCreateWithName("Helvetica" as CFString,28,nil)
-        for (text,y) in [("The bank approved a loan.",CGFloat(280)),("They walked along the bank of the river.",CGFloat(150))] {
+        for (text,y) in [("The bank approved a loan.",CGFloat(280)),
+                         ("The bank opened. They deposited money at the bank.",CGFloat(215)),
+                         ("They walked along the bank of the river.",CGFloat(150))] {
             let string=NSAttributedString(string:text,attributes:[NSAttributedString.Key(kCTFontAttributeName as String):font,
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String):CGColor(gray:0,alpha:1)])
             context.textPosition=CGPoint(x:30,y:y)
@@ -37,10 +64,12 @@ struct ScreenTextRecognitionTests {
         let image=try #require(context.makeImage())
         let snapshot=BooksScreenSnapshot(windowID:1,windowBounds:CGRect(x:0,y:0,width:1000,height:360),
             region:CGRect(x:0,y:0,width:1000,height:360),pointer:.zero,digest:Data(),image:image)
-        let lines=await ScreenTextRecognition.lines(snapshot:snapshot,target:"bank",timeout:30)
+        let result=await ScreenTextRecognition.recognize(snapshot:snapshot,target:"bank",timeout:30)
+        guard case .recognized(let lines)=result else { Issue.record("Vision failed"); return }
         let river=try #require(lines.first { $0.text.contains("river") })
         let word=try #require(river.words.first)
         #expect(river.text == "They walked along the bank of the river.")
+        #expect(word.range?.slice(in:river.text) == "bank")
         #expect(river.confidence >= 0 && river.confidence <= 1)
         #expect(river.bounds.insetBy(dx:-0.5,dy:-0.5).contains(word.bounds))
         let sentence=ScreenTextContext.sentence(target:"bank",pointer:CGPoint(x:word.bounds.midX,y:word.bounds.midY),lines:lines)
@@ -51,11 +80,24 @@ struct ScreenTextRecognitionTests {
         } else {
             #expect(sentence == nil)
         }
+        let repeated=try #require(lines.first { $0.text.contains("deposited") })
+        #expect(repeated.words.count == 2)
+        let second=try #require(repeated.words.last)
+        #expect(second.range?.slice(in:repeated.text) == "bank")
+        #expect(second.range?.start == (repeated.text as NSString).range(of:"bank",options:.backwards).location)
+        let repeatedSentence=ScreenTextContext.sentence(target:"bank",
+            pointer:CGPoint(x:second.bounds.midX,y:second.bounds.midY),lines:lines)
+        if repeated.confidence >= 0.85 {
+            #expect(repeatedSentence == "They deposited money at the bank.")
+        } else {
+            #expect(repeatedSentence == nil)
+        }
         let region=CGRect(x:0,y:100,width:900,height:200)
         let crop=try #require(await BooksScreenCapture.localCrop(image:image,window:snapshot.windowBounds,region:region))
         let cropped=BooksScreenSnapshot(windowID:1,windowBounds:snapshot.windowBounds,region:crop.region,
             pointer:CGPoint(x:word.bounds.midX-region.minX,y:word.bounds.midY-region.minY),digest:Data(),image:crop.image)
-        let croppedLines=await ScreenTextRecognition.lines(snapshot:cropped,target:"bank",timeout:30)
+        let croppedResult=await ScreenTextRecognition.recognize(snapshot:cropped,target:"bank",timeout:30)
+        guard case .recognized(let croppedLines)=croppedResult else { Issue.record("Crop recognition failed"); return }
         let croppedRiver=try #require(croppedLines.first { $0.text.contains("river") })
         #expect(croppedRiver.text == "They walked along the bank of the river.")
         let croppedSentence=ScreenTextContext.sentence(target:"bank",pointer:cropped.pointer,lines:croppedLines)
@@ -65,4 +107,11 @@ struct ScreenTextRecognitionTests {
             #expect(croppedSentence == nil)
         }
     }
+}
+
+private final class RecognitionCancellationCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
