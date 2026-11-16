@@ -28,25 +28,43 @@ enum BooksScreenFallback {
                         isCurrent: () -> Bool,
                         snapshot: () async -> BooksScreenSnapshot?,
                         native: () async throws -> CapturedContext,
-                        recognize: (BooksScreenSnapshot, String) async -> ScreenTextRecognition.Result) async throws -> CapturedContext {
-        let deadline = ProcessInfo.processInfo.systemUptime + 8
+                        recognize: (BooksScreenSnapshot, String, TimeInterval) async -> ScreenTextRecognition.Result,
+                        now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) async throws -> CapturedContext {
+        let deadline = now() + 8
         let before: BooksScreenSnapshot?
         if enabled && isBooks && permission && !nativeHasSentence && isCurrent() { before = await snapshot() }
         else { before = nil }
         let original = try await native()
+        var recognitionBudgetMilliseconds: Int?
+        var recognitionElapsedMilliseconds: Int?
         func rejected(_ status:ScreenContextStatus) -> CapturedContext {
-            var result=original; result.diagnostics.screenContext=status; return result
+            var result=original
+            result.diagnostics.screenContext=status
+            result.diagnostics.screenRecognitionBudgetMilliseconds=recognitionBudgetMilliseconds
+            result.diagnostics.screenRecognitionElapsedMilliseconds=recognitionElapsedMilliseconds
+            return result
         }
         guard enabled && isBooks && !nativeHasSentence, original.containingSentence == nil else { return original }
         guard permission else { return rejected(.permissionMissing) }
         guard let before else { return rejected(.captureUnavailable) }
         guard isCurrent(), !Task.isCancelled else { return rejected(.sourceChanged) }
-        guard ProcessInfo.processInfo.systemUptime < deadline else { return rejected(.timedOut) }
+        guard now() < deadline else { return rejected(.timedOut) }
         guard let after = await snapshot() else { return rejected(.captureUnavailable) }
         guard before.matches(after) else { return rejected(.pixelsChanged) }
-        let recognition = await recognize(after, original.target)
         guard isCurrent(), !Task.isCancelled else { return rejected(.sourceChanged) }
-        guard ProcessInfo.processInfo.systemUptime < deadline else { return rejected(.timedOut) }
+        let remaining = deadline - now()
+        guard remaining > 0 else { return rejected(.timedOut) }
+        // Extend the old recognition window only with unused capture time,
+        // reserving both final ScreenCaptureKit waits. Near the deadline keep
+        // quick recoveries possible, but never grant more than remains.
+        let timeout = min(remaining, max(ScreenTextRecognition.defaultTimeout,
+            remaining - BooksScreenCapture.snapshotWaitBudget))
+        recognitionBudgetMilliseconds=Int(timeout*1000)
+        let recognitionStarted=now()
+        let recognition = await recognize(after, original.target, timeout)
+        recognitionElapsedMilliseconds=Int(max(0,now()-recognitionStarted)*1000)
+        guard isCurrent(), !Task.isCancelled else { return rejected(.sourceChanged) }
+        guard now() < deadline else { return rejected(.timedOut) }
         let lines: [ScreenTextLine]
         switch recognition {
         case .recognized(let value): lines = value
@@ -56,11 +74,13 @@ enum BooksScreenFallback {
         guard let sentence = ScreenTextContext.sentence(target:original.target,pointer:after.pointer,lines:lines) else { return rejected(.textUnavailable) }
         guard let final = await snapshot() else { return rejected(.captureUnavailable) }
         guard after.matches(final), isCurrent(), !Task.isCancelled else { return rejected(.pixelsChanged) }
-        guard ProcessInfo.processInfo.systemUptime < deadline else { return rejected(.timedOut) }
+        guard now() < deadline else { return rejected(.timedOut) }
         var details = original.diagnostics
         details.strategy = .screenOCR
         details.reason = nil // Native sentence failure no longer describes the recovered OCR proposal.
         details.screenContext = .needsConfirmation
+        details.screenRecognitionBudgetMilliseconds=recognitionBudgetMilliseconds
+        details.screenRecognitionElapsedMilliseconds=recognitionElapsedMilliseconds
         return CapturedContext(target:original.target,context:sentence,containingSentence:sentence,diagnostics:details,
             capture:.init(reliability:.heuristic,method:.screenOCR))
     }
@@ -83,6 +103,9 @@ final class BooksScreenSettings: ObservableObject {
 
 @MainActor
 enum BooksScreenCapture {
+    static let operationTimeout: TimeInterval = 1.5
+    // A final pixel check needs the shareable-content and screenshot operations.
+    static let snapshotWaitBudget = operationTimeout * 2
     static func snapshot(source: NSRunningApplication, isCurrent: () -> Bool,
                          failed:(ScreenContextStatus)->Void = { _ in }) async -> BooksScreenSnapshot? {
         guard CGPreflightScreenCaptureAccess() else { failed(.permissionMissing); return nil }
@@ -155,7 +178,7 @@ enum BooksScreenCapture {
     private static func bounded<Value>(_ operation: (@escaping (Value?) -> Void) -> Void) async -> Value? {
         await withCheckedContinuation { continuation in
             let reply=ScreenCaptureReply(continuation)
-            DispatchQueue.global().asyncAfter(deadline:.now()+1.5) { reply.finish(nil) }
+            DispatchQueue.global().asyncAfter(deadline:.now()+operationTimeout) { reply.finish(nil) }
             operation { reply.finish($0) }
         }
     }
@@ -174,11 +197,13 @@ private final class ScreenCaptureReply<Value>: @unchecked Sendable {
 }
 
 enum ScreenTextRecognition {
+    static let defaultTimeout: TimeInterval = 3
     enum Result {
         case recognized([ScreenTextLine]), failed, timedOut
     }
 
-    static func recognize(snapshot:BooksScreenSnapshot,target:String,timeout:TimeInterval=3) async -> Result {
+    static func recognize(snapshot:BooksScreenSnapshot,target:String,
+                          timeout:TimeInterval=ScreenTextRecognition.defaultTimeout) async -> Result {
         guard let image=snapshot.image else { return .failed }
         let request=VNRecognizeTextRequest()
         return await perform(timeout:timeout,cancel:{request.cancel()}) { done in
