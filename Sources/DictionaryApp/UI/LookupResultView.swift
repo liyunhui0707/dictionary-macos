@@ -102,7 +102,7 @@ struct LookupResultView: View {
     private func resultContent(_ request: LookupRequest, translation: Translation) -> some View {
         let presentation = LookupResultPresentation(request: request, translation: translation)
         let meaning = AIMeaningPresentation(target: request.target, answer: translation.meaningInContext)
-        let additional = translation.additionalMeanings
+        let additional = presentation.additionalMeanings
         let hasMeaning = Translation.displayText(translation.meaningInContext) != nil
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -235,9 +235,14 @@ struct LookupResultPresentation {
     let sentenceTranslation: String?
     let contextLabel: String
     let notice: String?
+    let additionalMeanings: (literal: String?, alternatives: [String])
 
     init(request: LookupRequest, translation: Translation? = nil) {
         context = request.capture?.reliability == .targetOnly ? nil : request.context.flatMap { $0.isEmpty ? nil : $0 }
+        // General AI senses can contradict the selected contextual sense. Keep
+        // raw responses intact; contextual reading shows the primary answer and
+        // the independently labelled English reference instead.
+        additionalMeanings = context == nil ? translation?.additionalMeanings ?? (nil, []) : (nil, [])
         sentence = context == nil || request.capture?.reason == .sentenceUnavailable ? nil : request.containingSentence
         if sentence == nil { sentenceLabel = nil }
         else if request.isManual { sentenceLabel = "推断原句 · 手动输入" }
