@@ -26,7 +26,11 @@ struct GettingStartedView: View {
             Text("完成第一次语境查词").font(.system(size: 18, weight: .medium))
             Text("选择服务 → 主窗口查询 → 阅读软件选词。进度仅记录本次打开后的实际操作，不会自动查询或发送文字。")
                 .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-            Text(nextStep).foregroundStyle(DictionaryStyle.accent)
+            Text(guidance.message).foregroundStyle(DictionaryStyle.accent)
+            if let action = guidance.action {
+                Button(action.label) { perform(action) }
+                    .accessibilityIdentifier("first-lookup-next-action")
+            }
             if progress.isComplete {
                 Label("本次首查自测已完成", systemImage: "checkmark.circle")
                     .foregroundStyle(DictionaryStyle.accent).accessibilityIdentifier("first-lookup-complete")
@@ -35,6 +39,7 @@ struct GettingStartedView: View {
             Picker("阅读准备", selection: $readingRoute) {
                 ForEach(ReadingSetupRoute.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).accessibilityIdentifier("reading-setup-route")
+                .onChange(of: readingRoute) { _, _ in progress.resetReading() }
             if readingRoute == .browser {
                 HStack {
                     Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
@@ -78,8 +83,10 @@ struct GettingStartedView: View {
                 Text(checkMessage(progress.manual)).accessibilityIdentifier("first-lookup-manual-status")
                 Button("在主窗口准备样例", action: onExample).accessibilityIdentifier("prepare-lookup-example")
                 Text("只填入 bank 与河流句子，不自动提交或覆盖已有输入。点击“查词”后，应得到“河岸”；请自行核对。云端查询按服务商用量计费。")
-                if progress.manual == .failed || progress.manual == .noMeaning {
+                if progress.manual == .failed {
                     Button("检查查词服务", action: onService)
+                } else if progress.manual == .noMeaning {
+                    Button("更换模型或查词服务", action: service.selected == .local ? onLocal : onService)
                 }
             }
             DictionaryCard {
@@ -133,15 +140,25 @@ struct GettingStartedView: View {
         }
     }
 
-    private var nextStep: String {
-        if service.needsSetup { return "下一步：选择查词服务。" }
-        if service.selected == .local && local.restartRequired { return "下一步：重新打开 Dictionary，让已选模型生效。" }
-        if progress.isComplete { return "可以开始阅读；换一个软件时，再核对一次原句。" }
-        if progress.manual != .responseReceived && service.selected == .local && [.missingModel, .unavailable, .timedOut].contains(local.status) {
-            return "下一步：准备本地服务与模型，再重新检查。"
+    private var guidance: FirstLookupGuidance {
+        FirstLookupGuidance.resolve(.init(needsService: service.needsSetup, local: service.selected == .local,
+            restartRequired: local.restartRequired, status: local.status, checking: local.isChecking,
+            checkedAt: local.checkedAt, responseAt: progress.lastResponseAt,
+            manual: progress.manual, reading: progress.reading, complete: progress.isComplete,
+            route: readingRoute, extensionPrepared: extensionSetup.prepared != nil, permission: readiness.permission,
+            booksScreenEnabled: booksScreenSettings.enabled, screenPermission: booksScreenSettings.permissionGranted))
+    }
+
+    private func perform(_ action: FirstLookupGuidance.Action) {
+        switch action {
+        case .service: onService()
+        case .checkLocal: Task { await local.check() }
+        case .localModel: onLocal()
+        case .example: onExample()
+        case .permissions: onPermission()
+        case .prepareExtension: extensionSetup.prepare(); pathCopied = false
+        case .browserSample: NSWorkspace.shared.open(FirstLookupProgress.readingSampleURL)
         }
-        if progress.manual != .responseReceived { return "下一步：在主窗口准备样例，并主动点击查词。" }
-        return progress.reading == .responseReceived ? "下一步：核对最近一次浮窗的原句和词义，再确认。" : "下一步：在阅读软件中选词并按 ⌥D。"
     }
 
     private var browserInstructions: some View {
@@ -183,7 +200,7 @@ struct GettingStartedView: View {
         case .responseReceived: "已收到包含原句的释义。仍需核对原句与词义，服务响应不代表 AI 判断正确。"
         case .needsContext: "尚未取得对应原句。请补充完整语境，或在可读取的正文中重新选词；若结果不对应，请勿确认完成。"
         case .needsReview: "尚未通过你的核对。原句不符时重新选词或补充语境；原句正确但词义错误时，可更换查词服务，不要因此重置选词权限。"
-        case .noMeaning: "没有可用释义。请检查服务或更换查词方式后重试。"
+        case .noMeaning: "模型已响应，但没有可用释义。请核对输入或更换模型／服务；无需调整选词权限。"
         case .failed: "本次查询未完成。请查看查询结果中的错误，检查连接、模型或云端额度后重试。"
         case .cancelled: "本次查询已取消，可以重新准备样例或选词。"
         }

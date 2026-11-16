@@ -91,19 +91,18 @@ final class OllamaProvider: TranslationProvider {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw TranslationError.apiError(
-                status: -1,
-                body: "Could not reach Ollama at \(endpoint.absoluteString). Is `ollama serve` running? (\(error.localizedDescription))"
-            )
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+            throw (error as? URLError)?.code == .timedOut ? OllamaLookupError.timedOut : OllamaLookupError.unavailable
         }
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let raw = String(data: data, encoding: .utf8) ?? "<unreadable>"
-            throw TranslationError.apiError(status: status, body: raw)
+            throw OllamaLookupError.rejected(status)
         }
 
-        let envelope = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
+        let envelope: OllamaChatResponse
+        do { envelope = try JSONDecoder().decode(OllamaChatResponse.self, from: data) }
+        catch { throw OllamaLookupError.invalidResponse }
         let rawContent = envelope.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawContent.isEmpty else { throw TranslationError.emptyResponse }
 
@@ -117,6 +116,25 @@ final class OllamaProvider: TranslationProvider {
             return try decoder.decode(Translation.self, from: jsonData)
         } catch {
             throw TranslationError.unparseableJSON(rawOutput: rawContent)
+        }
+    }
+}
+
+enum OllamaLookupError: LocalizedError {
+    case unavailable, timedOut, rejected(Int), invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return "无法连接 Ollama。请打开 Ollama，再到“开始使用”检查本地服务与模型后重试；无需调整选词权限。"
+        case .timedOut:
+            return "Ollama 查询超时。模型加载或生成可能较慢，请检查本地服务状态后重试；未自动重复查询。"
+        case .rejected(404):
+            return "Ollama 未找到当前模型或查询接口（404）。请在本地模型设置检查已安装模型与服务地址；保存模型后需重新打开 Dictionary。"
+        case .rejected(let status):
+            return "Ollama 拒绝本次查询（\(status)）。请检查服务状态与当前模型后重试；未自动重复查询。"
+        case .invalidResponse:
+            return "Ollama 已响应，但响应格式无效。请检查服务地址与版本后重试；模型选择未改变。"
         }
     }
 }

@@ -42,13 +42,15 @@ final class LocalModelSettings: ObservableObject {
     @Published var selectedModel = ""
     private let probe: any OllamaModelListing
     private let persistModel: (String) -> Void
+    private let now: () -> Date
 
     init(configuration: LocalModelConfiguration, savedModel: String?, probe: any OllamaModelListing = OllamaModelListClient(),
-         persistModel: @escaping (String) -> Void) {
+         persistModel: @escaping (String) -> Void, now: @escaping () -> Date = { .now }) {
         self.configuration = configuration
         self.savedModel = savedModel.flatMap { LocalModelConfiguration.validModel($0) ? $0 : nil }
         self.probe = probe
         self.persistModel = persistModel
+        self.now = now
     }
 
     var canEdit: Bool { configuration.isActive && !configuration.environmentOverride }
@@ -75,7 +77,7 @@ final class LocalModelSettings: ObservableObject {
         guard configuration.isActive, !isChecking else { return }
         isChecking = true
         models = []; selectedModel = ""; checkedAt = nil
-        defer { isChecking = false }
+        defer { isChecking = false; if status != .unchecked { checkedAt = now() } }
         do {
             let names = try await probe.models()
             try Task.checkCancellation()
@@ -83,7 +85,6 @@ final class LocalModelSettings: ObservableObject {
             let preferred = savedModel ?? configuration.model
             selectedModel = names.first { LocalModelConfiguration.matches(preferred, $0) } ?? ""
             status = names.contains { LocalModelConfiguration.matches(configuration.model, $0) } ? .available : .missingModel
-            checkedAt = .now
         } catch is CancellationError { status = .unchecked }
         catch let error as OllamaServiceError {
             switch error {
