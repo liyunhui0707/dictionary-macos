@@ -5,7 +5,7 @@ import Vision
 import CryptoKit
 
 enum ScreenContextStatus: String, Codable {
-    case permissionMissing, windowUnavailable, captureUnavailable, sourceChanged, pixelsChanged, textUnavailable, timedOut, needsConfirmation
+    case permissionMissing, windowUnavailable, captureUnavailable, sourceChanged, pixelsChanged, textUnavailable, recognitionFailed, timedOut, needsConfirmation
 }
 
 struct BooksScreenSnapshot {
@@ -28,7 +28,7 @@ enum BooksScreenFallback {
                         isCurrent: () -> Bool,
                         snapshot: () async -> BooksScreenSnapshot?,
                         native: () async throws -> CapturedContext,
-                        recognize: (BooksScreenSnapshot, String) async -> [ScreenTextLine]) async throws -> CapturedContext {
+                        recognize: (BooksScreenSnapshot, String) async -> ScreenTextRecognition.Result) async throws -> CapturedContext {
         let deadline = ProcessInfo.processInfo.systemUptime + 8
         let before: BooksScreenSnapshot?
         if enabled && isBooks && permission && !nativeHasSentence && isCurrent() { before = await snapshot() }
@@ -44,9 +44,15 @@ enum BooksScreenFallback {
         guard ProcessInfo.processInfo.systemUptime < deadline else { return rejected(.timedOut) }
         guard let after = await snapshot() else { return rejected(.captureUnavailable) }
         guard before.matches(after) else { return rejected(.pixelsChanged) }
-        let lines = await recognize(after, original.target)
+        let recognition = await recognize(after, original.target)
         guard isCurrent(), !Task.isCancelled else { return rejected(.sourceChanged) }
         guard ProcessInfo.processInfo.systemUptime < deadline else { return rejected(.timedOut) }
+        let lines: [ScreenTextLine]
+        switch recognition {
+        case .recognized(let value): lines = value
+        case .failed: return rejected(.recognitionFailed)
+        case .timedOut: return rejected(.timedOut)
+        }
         guard let sentence = ScreenTextContext.sentence(target:original.target,pointer:after.pointer,lines:lines) else { return rejected(.textUnavailable) }
         guard let final = await snapshot() else { return rejected(.captureUnavailable) }
         guard after.matches(final), isCurrent(), !Task.isCancelled else { return rejected(.pixelsChanged) }
@@ -159,38 +165,55 @@ private final class ScreenCaptureReply<Value>: @unchecked Sendable {
     private let lock=NSLock()
     private var continuation: CheckedContinuation<Value?,Never>?
     init(_ continuation:CheckedContinuation<Value?,Never>) { self.continuation=continuation }
-    func finish(_ value:Value?) {
+    func finish(_ value:Value?, beforeResume: () -> Void = {}) {
         lock.lock(); let pending=continuation; continuation=nil; lock.unlock()
-        pending?.resume(returning:value)
+        guard let pending else { return }
+        beforeResume()
+        pending.resume(returning:value)
     }
 }
 
 enum ScreenTextRecognition {
-    static func lines(snapshot:BooksScreenSnapshot,target:String,timeout:TimeInterval=3) async -> [ScreenTextLine] {
-        guard let image=snapshot.image, timeout > 0 else { return [] }
-        let request=VNRecognizeTextRequest()
-        return await withCheckedContinuation { continuation in
-            let reply=ScreenCaptureReply<[ScreenTextLine]>(continuation)
-            DispatchQueue.global().asyncAfter(deadline:.now()+timeout) { request.cancel(); reply.finish([]) }
-            DispatchQueue.global(qos:.userInitiated).async {
-                reply.finish(recognize(image:image,snapshot:snapshot,target:target,request:request))
-            }
-        } ?? []
+    enum Result {
+        case recognized([ScreenTextLine]), failed, timedOut
     }
 
-    private static func recognize(image:CGImage,snapshot:BooksScreenSnapshot,target:String,
-                                  request:VNRecognizeTextRequest) -> [ScreenTextLine] {
+    static func recognize(snapshot:BooksScreenSnapshot,target:String,timeout:TimeInterval=3) async -> Result {
+        guard let image=snapshot.image else { return .failed }
+        let request=VNRecognizeTextRequest()
+        return await perform(timeout:timeout,cancel:{request.cancel()}) { done in
+            DispatchQueue.global(qos:.userInitiated).async {
+                done(read(image:image,snapshot:snapshot,target:target,request:request))
+            }
+        }
+    }
+
+    /// A late native callback cannot overwrite the timeout or resume a caller twice.
+    static func perform(timeout:TimeInterval,cancel:@escaping ()->Void,
+                        operation:(@escaping (Result)->Void)->Void) async -> Result {
+        guard timeout.isFinite, timeout > 0 else { return .timedOut }
+        return await withCheckedContinuation { continuation in
+            let reply=ScreenCaptureReply<Result>(continuation)
+            DispatchQueue.global().asyncAfter(deadline:.now()+timeout) {
+                reply.finish(.timedOut,beforeResume:cancel)
+            }
+            operation { reply.finish($0) }
+        } ?? .failed
+    }
+
+    private static func read(image:CGImage,snapshot:BooksScreenSnapshot,target:String,
+                             request:VNRecognizeTextRequest) -> Result {
             request.recognitionLevel = .accurate
             request.recognitionLanguages=["en-US"]; request.usesLanguageCorrection=false
             guard (try? VNImageRequestHandler(cgImage:image).perform([request])) != nil,
-                  let observations=request.results, observations.count <= 200 else { return [] }
+                  let observations=request.results, observations.count <= 200 else { return .failed }
             func rect(_ box:CGRect) -> CGRect {
                 CGRect(x:box.minX*snapshot.region.width,y:(1-box.maxY)*snapshot.region.height,
                        width:box.width*snapshot.region.width,height:box.height*snapshot.region.height)
             }
             let pattern="(?<![\\p{L}\\p{M}\\p{N}_])"+NSRegularExpression.escapedPattern(for:target)+"(?![\\p{L}\\p{M}\\p{N}_])"
-            guard let regex=try? NSRegularExpression(pattern:pattern,options:.caseInsensitive) else { return [] }
-            return observations.compactMap { observation -> ScreenTextLine? in
+            guard let regex=try? NSRegularExpression(pattern:pattern,options:.caseInsensitive) else { return .failed }
+            return .recognized(observations.compactMap { observation -> ScreenTextLine? in
                 guard let candidate=observation.topCandidates(1).first, candidate.string.utf16.count <= 2000 else { return nil }
                 let text=candidate.string
                 let words=regex.matches(in:text,range:NSRange(location:0,length:text.utf16.count)).compactMap { match -> ScreenTextWord? in
@@ -198,6 +221,6 @@ enum ScreenTextRecognition {
                     return ScreenTextWord(text:String(text[range]),bounds:rect(bounds.boundingBox))
                 }
                 return ScreenTextLine(text:text,bounds:rect(observation.boundingBox),confidence:candidate.confidence,words:words)
-            }
+            })
     }
 }

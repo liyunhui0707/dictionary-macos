@@ -5,6 +5,31 @@ import Testing
 @testable import DictionaryApp
 
 struct ScreenTextRecognitionTests {
+    @Test func timeoutCancelsRecognitionAndDiscardsALateReply() async {
+        let cancelled = RecognitionCancellationCount()
+        var complete: ((ScreenTextRecognition.Result) -> Void)?
+        let result = await ScreenTextRecognition.perform(timeout: 0.01, cancel: { cancelled.increment() }) {
+            complete = $0
+        }
+        guard case .timedOut = result else { Issue.record("Timeout was lost"); return }
+        #expect(cancelled.value == 1)
+        // A native completion can arrive after cancellation. It must not resume twice.
+        complete?(.recognized([]))
+    }
+
+    @Test func successfulEmptyRecognitionAndFailureRemainDistinct() async {
+        let cancelled = RecognitionCancellationCount()
+        let empty = await ScreenTextRecognition.perform(timeout: 0.02, cancel: { cancelled.increment() }) {
+            $0(.recognized([]))
+        }
+        guard case .recognized(let lines) = empty else { Issue.record("Empty result was lost"); return }
+        #expect(lines.isEmpty)
+        let failed = await ScreenTextRecognition.perform(timeout: 0.02, cancel: {}) { $0(.failed) }
+        guard case .failed = failed else { Issue.record("Failure was lost"); return }
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(cancelled.value == 0)
+    }
+
     @MainActor
     @Test func windowLocalCropOwnsOnlyTheRequestedPixelsAcrossNegativeDisplayOrigins() throws {
         func image(outside:CGFloat) throws -> CGImage {
@@ -37,7 +62,8 @@ struct ScreenTextRecognitionTests {
         let image=try #require(context.makeImage())
         let snapshot=BooksScreenSnapshot(windowID:1,windowBounds:CGRect(x:0,y:0,width:1000,height:360),
             region:CGRect(x:0,y:0,width:1000,height:360),pointer:.zero,digest:Data(),image:image)
-        let lines=await ScreenTextRecognition.lines(snapshot:snapshot,target:"bank",timeout:30)
+        let result=await ScreenTextRecognition.recognize(snapshot:snapshot,target:"bank",timeout:30)
+        guard case .recognized(let lines)=result else { Issue.record("Vision failed"); return }
         let river=try #require(lines.first { $0.text.contains("river") })
         let word=try #require(river.words.first)
         #expect(river.text == "They walked along the bank of the river.")
@@ -55,7 +81,8 @@ struct ScreenTextRecognitionTests {
         let crop=try #require(await BooksScreenCapture.localCrop(image:image,window:snapshot.windowBounds,region:region))
         let cropped=BooksScreenSnapshot(windowID:1,windowBounds:snapshot.windowBounds,region:crop.region,
             pointer:CGPoint(x:word.bounds.midX-region.minX,y:word.bounds.midY-region.minY),digest:Data(),image:crop.image)
-        let croppedLines=await ScreenTextRecognition.lines(snapshot:cropped,target:"bank",timeout:30)
+        let croppedResult=await ScreenTextRecognition.recognize(snapshot:cropped,target:"bank",timeout:30)
+        guard case .recognized(let croppedLines)=croppedResult else { Issue.record("Crop recognition failed"); return }
         let croppedRiver=try #require(croppedLines.first { $0.text.contains("river") })
         #expect(croppedRiver.text == "They walked along the bank of the river.")
         let croppedSentence=ScreenTextContext.sentence(target:"bank",pointer:cropped.pointer,lines:croppedLines)
@@ -65,4 +92,11 @@ struct ScreenTextRecognitionTests {
             #expect(croppedSentence == nil)
         }
     }
+}
+
+private final class RecognitionCancellationCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }

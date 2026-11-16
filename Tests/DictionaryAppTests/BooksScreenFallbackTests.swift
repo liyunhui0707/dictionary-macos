@@ -18,7 +18,7 @@ struct BooksScreenFallbackTests {
         var snapshots=0, copies=0
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
             isCurrent:{ true },snapshot:{ snapshots+=1; return frame() },native:{ copies+=1; return targetOnly },
-            recognize:{ _,_ in lines })
+            recognize:{ _,_ in .recognized(lines) })
         #expect(snapshots==3 && copies==1)
         #expect(result.context==lines[0].text && result.capture?.method == .screenOCR)
         #expect(result.capture?.reliability == .heuristic && result.capture?.range == nil)
@@ -31,7 +31,7 @@ struct BooksScreenFallbackTests {
         var snapshots=0
         let result=try await BooksScreenFallback.capture(enabled:mode != "disabled",isBooks:mode != "otherApp",
             permission:mode != "permission",nativeHasSentence:mode == "nativeContext",isCurrent:{true},
-            snapshot:{snapshots+=1;return frame()},native:{targetOnly},recognize:{ _,_ in Issue.record("Unexpected OCR");return [] })
+            snapshot:{snapshots+=1;return frame()},native:{targetOnly},recognize:{ _,_ in Issue.record("Unexpected OCR");return .recognized([]) })
         #expect(snapshots==0 && result.capture?.reliability == .targetOnly)
     }
     @Test(arguments:[2,3])
@@ -39,13 +39,13 @@ struct BooksScreenFallbackTests {
         var snapshots=0
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
             isCurrent:{true},snapshot:{snapshots+=1;return frame(snapshots>=changedAt ? 2:1)},
-            native:{targetOnly},recognize:{_,_ in lines})
+            native:{targetOnly},recognize:{_,_ in .recognized(lines)})
         #expect(result.context=="bank" && result.containingSentence==nil)
     }
     @Test func sourceChangeCannotAttachAScreenSentence() async throws {
         var current=true
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
-            isCurrent:{current},snapshot:{frame()},native:{targetOnly},recognize:{_,_ in current=false;return lines})
+            isCurrent:{current},snapshot:{frame()},native:{targetOnly},recognize:{_,_ in current=false;return .recognized(lines)})
         #expect(result.context=="bank" && result.containingSentence==nil)
     }
     @Test(arguments:["window","bounds","region","pointer"])
@@ -57,7 +57,7 @@ struct BooksScreenFallbackTests {
             region:change == "region" ? initial.region.offsetBy(dx:1,dy:0):initial.region,
             pointer:change == "pointer" ? CGPoint(x:196,y:20):initial.pointer,digest:initial.digest,image:nil)
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
-            isCurrent:{true},snapshot:{count+=1;return count==1 ? initial:other},native:{targetOnly},recognize:{_,_ in lines})
+            isCurrent:{true},snapshot:{count+=1;return count==1 ? initial:other},native:{targetOnly},recognize:{_,_ in .recognized(lines)})
         #expect(result.context=="bank" && result.containingSentence==nil)
     }
     @Test func nativeSuccessAlwaysWinsWithoutOCR() async throws {
@@ -66,7 +66,7 @@ struct BooksScreenFallbackTests {
         var snapshots=0
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
             isCurrent:{true},snapshot:{snapshots+=1;return frame()},native:{native},
-            recognize:{_,_ in Issue.record("Unexpected OCR");return []})
+            recognize:{_,_ in Issue.record("Unexpected OCR");return .recognized([])})
         #expect(snapshots==1 && result.capture?.method == .axTreeWalk)
     }
     @Test func paragraphWithoutConfirmedSentenceCanOfferScreenPreview() async throws {
@@ -74,7 +74,7 @@ struct BooksScreenFallbackTests {
             capture:.init(reliability:.heuristic,method:.axRange,reason:.sentenceUnavailable))
         paragraph.diagnostics.includeQuality(paragraph.capture)
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
-            isCurrent:{true},snapshot:{frame()},native:{paragraph},recognize:{_,_ in lines})
+            isCurrent:{true},snapshot:{frame()},native:{paragraph},recognize:{_,_ in .recognized(lines)})
         #expect(result.containingSentence==lines[0].text && result.capture?.method == .screenOCR)
         #expect(result.diagnostics.reason == nil)
     }
@@ -82,14 +82,26 @@ struct BooksScreenFallbackTests {
         let paragraph=CapturedContext(target:"bank",context:"They walked along the bank of the river.",containingSentence:nil,
             capture:.init(reliability:.heuristic,method:.axRange,reason:.sentenceUnavailable))
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
-            isCurrent:{true},snapshot:{nil},native:{paragraph},recognize:{_,_ in []})
+            isCurrent:{true},snapshot:{nil},native:{paragraph},recognize:{_,_ in .recognized([])})
         #expect(result.context==paragraph.context && result.capture?.method == .axRange)
         #expect(result.containingSentence==nil)
     }
     @Test func screenshotOrOCRFailurePreservesCopiedWord() async throws {
         let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
-            isCurrent:{true},snapshot:{nil},native:{targetOnly},recognize:{_,_ in []})
+            isCurrent:{true},snapshot:{nil},native:{targetOnly},recognize:{_,_ in .recognized([])})
         #expect(result.target=="bank" && result.containingSentence==nil)
+    }
+
+    @Test(arguments:["empty","failed","timeout"])
+    func recognitionOutcomePreservesNativeTextAndReportsItsActualReason(outcome:String) async throws {
+        let paragraph=CapturedContext(target:"bank",context:"They walked along the bank of the river.",containingSentence:nil,
+            capture:.init(reliability:.heuristic,method:.axRange,reason:.sentenceUnavailable))
+        let recognition:ScreenTextRecognition.Result = outcome == "failed" ? .failed : outcome == "timeout" ? .timedOut : .recognized([])
+        let result=try await BooksScreenFallback.capture(enabled:true,isBooks:true,permission:true,nativeHasSentence:false,
+            isCurrent:{true},snapshot:{frame()},native:{paragraph},recognize:{_,_ in recognition})
+        #expect(result.target==paragraph.target && result.context==paragraph.context && result.containingSentence==nil)
+        #expect(result.capture?.method == .axRange)
+        #expect(result.diagnostics.screenContext == (outcome == "failed" ? .recognitionFailed : outcome == "timeout" ? .timedOut : .textUnavailable))
     }
 
     private func reviewRequest() throws -> LookupRequest {

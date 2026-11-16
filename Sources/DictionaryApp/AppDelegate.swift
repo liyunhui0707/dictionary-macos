@@ -391,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             permission:screenEnabled && CGPreflightScreenCaptureAccess(),nativeHasSentence:hasSentence,
             isCurrent:isCurrent, snapshot:{ await BooksScreenCapture.snapshot(source:source,isCurrent:isCurrent,failed:{screenStatus=$0}) },
             native:{ try await pipeline.capture(isSafari:Self.safariBundleIDs.contains(bundleID),isBooks:isBooks) },
-            recognize:{ await ScreenTextRecognition.lines(snapshot:$0,target:$1) })
+            recognize:{ await ScreenTextRecognition.recognize(snapshot:$0,target:$1) })
         if captured.containingSentence == nil, let screenStatus { captured.diagnostics.screenContext=screenStatus }
         return captured
     }
