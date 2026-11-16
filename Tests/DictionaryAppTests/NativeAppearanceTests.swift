@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import DictionaryApp
 
-/// Hidden, test-owned views only. No AppDelegate, live provider, permission probe or Keychain.
+/// Hidden, test-owned views only. No AppDelegate, live provider, permission request or Keychain.
 @MainActor
 @Suite(.serialized)
 struct NativeAppearanceTests {
@@ -19,24 +19,29 @@ struct NativeAppearanceTests {
         let progress = FirstLookupProgress(coordinator: coordinator)
         let root = try BrowserExtensionExportTests().fixture()
         let setup = BrowserExtensionSetup(source: root.appendingPathComponent("source"), managedParent: root.appendingPathComponent("managed"))
+        var tokenCopies = 0
         for phase in ["fresh", "prepared", "changed"] {
             if phase == "prepared" { setup.prepare() }
             if phase == "changed" {
                 let directory = try #require(setup.prepared?.directory)
                 try Data("changed".utf8).write(to: directory.appendingPathComponent("content.js"))
             }
-            for scheme in [ColorScheme.light, .dark] {
+            for route in phase == "fresh" ? ReadingSetupRoute.allCases : [.browser] {
+              for scheme in [ColorScheme.light, .dark] {
                 try await host(DictionarySettingsView(settings: cloud, localSettings: local, section: .started,
-                    serviceSettings: service, progress: progress, extensionSetup: setup).frame(width: 580, height: 580),
+                    serviceSettings: service, progress: progress, extensionSetup: setup, readingRoute: route,
+                    onCopyExtensionToken: { tokenCopies += 1; return true }).frame(width: 580, height: 580),
                     size: NSSize(width: 580, height: 580), scheme: scheme,
-                    preview: "preparation-\(phase)-\(scheme == .light ? "light" : "dark")") { view in
+                    preview: "preparation-\(phase)-\(route)-\(scheme == .light ? "light" : "dark")") { view in
                     #expect(view.fittingSize.width <= 580 && view.fittingSize.height <= 580)
                 }
+              }
             }
         }
         #expect(await provider.calls.isEmpty)
         #expect(await store.accesses == 0)
         #expect(await probe.calls == 0)
+        #expect(tokenCopies == 0)
         #expect(service.selected == nil && progress.manual == .notStarted && progress.reading == .notStarted)
     }
 
