@@ -53,7 +53,9 @@ struct ScreenTextRecognitionTests {
             space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
         context.setFillColor(CGColor(gray:1,alpha:1));context.fill(CGRect(x:0,y:0,width:1000,height:360))
         let font=CTFontCreateWithName("Helvetica" as CFString,28,nil)
-        for (text,y) in [("The bank approved a loan.",CGFloat(280)),("They walked along the bank of the river.",CGFloat(150))] {
+        for (text,y) in [("The bank approved a loan.",CGFloat(280)),
+                         ("The bank opened. They deposited money at the bank.",CGFloat(215)),
+                         ("They walked along the bank of the river.",CGFloat(150))] {
             let string=NSAttributedString(string:text,attributes:[NSAttributedString.Key(kCTFontAttributeName as String):font,
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String):CGColor(gray:0,alpha:1)])
             context.textPosition=CGPoint(x:30,y:y)
@@ -67,6 +69,7 @@ struct ScreenTextRecognitionTests {
         let river=try #require(lines.first { $0.text.contains("river") })
         let word=try #require(river.words.first)
         #expect(river.text == "They walked along the bank of the river.")
+        #expect(word.range?.slice(in:river.text) == "bank")
         #expect(river.confidence >= 0 && river.confidence <= 1)
         #expect(river.bounds.insetBy(dx:-0.5,dy:-0.5).contains(word.bounds))
         let sentence=ScreenTextContext.sentence(target:"bank",pointer:CGPoint(x:word.bounds.midX,y:word.bounds.midY),lines:lines)
@@ -76,6 +79,18 @@ struct ScreenTextRecognitionTests {
             #expect(sentence == "They walked along the bank of the river.")
         } else {
             #expect(sentence == nil)
+        }
+        let repeated=try #require(lines.first { $0.text.contains("deposited") })
+        #expect(repeated.words.count == 2)
+        let second=try #require(repeated.words.last)
+        #expect(second.range?.slice(in:repeated.text) == "bank")
+        #expect(second.range?.start == (repeated.text as NSString).range(of:"bank",options:.backwards).location)
+        let repeatedSentence=ScreenTextContext.sentence(target:"bank",
+            pointer:CGPoint(x:second.bounds.midX,y:second.bounds.midY),lines:lines)
+        if repeated.confidence >= 0.85 {
+            #expect(repeatedSentence == "They deposited money at the bank.")
+        } else {
+            #expect(repeatedSentence == nil)
         }
         let region=CGRect(x:0,y:100,width:900,height:200)
         let crop=try #require(await BooksScreenCapture.localCrop(image:image,window:snapshot.windowBounds,region:region))

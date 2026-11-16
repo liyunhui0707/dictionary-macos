@@ -211,14 +211,13 @@ enum ScreenTextRecognition {
                 CGRect(x:box.minX*snapshot.region.width,y:(1-box.maxY)*snapshot.region.height,
                        width:box.width*snapshot.region.width,height:box.height*snapshot.region.height)
             }
-            let pattern="(?<![\\p{L}\\p{M}\\p{N}_])"+NSRegularExpression.escapedPattern(for:target)+"(?![\\p{L}\\p{M}\\p{N}_])"
-            guard let regex=try? NSRegularExpression(pattern:pattern,options:.caseInsensitive) else { return .failed }
             return .recognized(observations.compactMap { observation -> ScreenTextLine? in
                 guard let candidate=observation.topCandidates(1).first, candidate.string.utf16.count <= 2000 else { return nil }
                 let text=candidate.string
-                let words=regex.matches(in:text,range:NSRange(location:0,length:text.utf16.count)).compactMap { match -> ScreenTextWord? in
-                    guard let range=Range(match.range,in:text), let bounds=try? candidate.boundingBox(for:range) else { return nil }
-                    return ScreenTextWord(text:String(text[range]),bounds:rect(bounds.boundingBox))
+                let words=ScreenTextContext.occurrences(target,in:text).compactMap { match -> ScreenTextWord? in
+                    guard let range=Range(match,in:text), let bounds=try? candidate.boundingBox(for:range) else { return nil }
+                    return ScreenTextWord(text:String(text[range]),bounds:rect(bounds.boundingBox),
+                        range:.init(start:match.location,end:NSMaxRange(match)))
                 }
                 return ScreenTextLine(text:text,bounds:rect(observation.boundingBox),confidence:candidate.confidence,words:words)
             })
