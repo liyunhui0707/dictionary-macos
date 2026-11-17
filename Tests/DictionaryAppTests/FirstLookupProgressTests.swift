@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import DictionaryApp
 
@@ -44,6 +45,22 @@ struct FirstLookupProgressTests {
         #expect(progress.isComplete) // Merely closing a window is not another query.
         progress.rejectReading()
         #expect(progress.reading == .needsReview && !progress.isComplete && !progress.canConfirmReading)
+    }
+
+    @Test func switchingReadingRouteKeepsManualEvidenceButRequiresANewReadingCheck() async throws {
+        let provider = ControlledProvider(), coordinator = LookupCoordinator(provider: provider)
+        let time = Date(timeIntervalSince1970: 30)
+        let progress = FirstLookupProgress(coordinator: coordinator, now: { time })
+        try await complete(coordinator, provider, channel: .manual)
+        try await complete(coordinator, provider, channel: .selection)
+        #expect(progress.lastResponseAt == time && progress.confirmReading())
+        let count = await provider.calls.count
+        progress.resetReading()
+        #expect(progress.manual == .responseReceived && progress.reading == .notStarted)
+        #expect(!progress.isComplete && !progress.confirmReading())
+        #expect(await provider.calls.count == count)
+        coordinator.configurePrimaryProvider(provider, label: "Synthetic", isCloud: false)
+        #expect(progress.lastResponseAt == nil)
     }
 
     @Test func closingCancelledManualQueryCannotReuseAnOlderSuccessAsNewEvidence() async throws {

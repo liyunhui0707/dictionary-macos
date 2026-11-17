@@ -13,9 +13,12 @@ final class FirstLookupProgress: ObservableObject {
     @Published private(set) var manual: Check = .notStarted
     @Published private(set) var reading: Check = .notStarted
     @Published private(set) var readingConfirmed = false
+    @Published private(set) var lastResponseAt: Date?
+    private let now: () -> Date
     private var observations = Set<AnyCancellable>()
 
-    init(coordinator: LookupCoordinator? = nil) {
+    init(coordinator: LookupCoordinator? = nil, now: @escaping () -> Date = { .now }) {
+        self.now = now
         guard let coordinator else { return }
         coordinator.$manual.sink { [weak self] in self?.receive($0, channel: .manual) }.store(in: &observations)
         coordinator.$selection.sink { [weak self] in self?.receive($0, channel: .selection) }.store(in: &observations)
@@ -34,8 +37,10 @@ final class FirstLookupProgress: ObservableObject {
 
     func rejectReading() { readingConfirmed = false; reading = .needsReview }
 
+    func resetReading() { reading = .notStarted; readingConfirmed = false }
+
     private func reset() {
-        manual = .notStarted; reading = .notStarted; readingConfirmed = false
+        manual = .notStarted; reading = .notStarted; readingConfirmed = false; lastResponseAt = nil
     }
 
     private func receive(_ phase: LookupPhase, channel: LookupChannel) {
@@ -49,6 +54,7 @@ final class FirstLookupProgress: ObservableObject {
             // The manual window can restore its previous result when closed.
             // Only a response following an observed submission is new evidence.
             guard (channel == .manual ? manual : reading) == .querying else { return }
+            lastResponseAt = now()
             if AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext).notice != nil {
                 check = .noMeaning
             }

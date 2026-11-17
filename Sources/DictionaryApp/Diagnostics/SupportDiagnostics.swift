@@ -29,6 +29,14 @@ enum SupportIssue: String, Codable {
             case .emptyResponse, .unparseableJSON: return .invalidResponse
             }
         }
+        if let error = error as? OllamaLookupError {
+            switch error {
+            case .unavailable: return .connectionFailed
+            case .timedOut: return .timedOut
+            case .rejected(let status): return http(status)
+            case .invalidResponse: return .invalidResponse
+            }
+        }
         if let error = error as? URLError { return error.code == .timedOut ? .timedOut : .connectionFailed }
         if let failure = error as? CaptureFailure {
             if failure.details.issues.contains(where: { $0.clipboardReason == .restorationFailed }) { return .clipboardRestoreFailed }
@@ -60,7 +68,8 @@ enum SupportIssue: String, Codable {
         case .accountOrRateLimit: "服务报告账户、额度或限流问题，请到服务商处确认。"
         case .modelOrEndpointUnavailable: "服务未找到模型或接口。本地模式检查已安装模型；云端模式检查服务配置。"
         case .serviceRejected: "服务未接受查询。检查服务状态后再试，不会自动切换另一服务。"
-        case .invalidResponse, .noMeaning: "没有可用的模型释义。可重试或更换查词服务；原句正确不代表词义正确。"
+        case .invalidResponse: "服务已响应，但内容格式无效。检查服务配置；反复调整选词权限不能修复响应格式。"
+        case .noMeaning: "模型已响应，但没有可用释义。核对输入或更换模型／服务；原句正确不代表词义正确。"
         case .captureUnavailable: "未取得可用选词。重新选中正文；仍失败时可手动输入单词和原句。"
         case .permissionRequired: "原生选词缺少权限。查看当前 App 的选词权限；手动输入和浏览器扩展不要求此权限。"
         case .sourceChanged: "查词期间来源发生变化。回到阅读软件重新选词。"

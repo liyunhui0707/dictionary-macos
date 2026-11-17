@@ -74,6 +74,19 @@ struct LocalModelSettingsTests {
         #expect(settings.status == .invalidResponse)
     }
 
+    @Test func failedExplicitChecksHaveFreshEvidenceWithoutChangingTheSavedModel() async {
+        let probe = ModelProbeFixture()
+        let completed = Date(timeIntervalSince1970: 20)
+        var writes = 0
+        let settings = LocalModelSettings(configuration: .init(environment: [:], savedModel: nil),
+            savedModel: nil, probe: probe, persistModel: { _ in writes += 1 }, now: { completed })
+        #expect(settings.checkedAt == nil)
+        await probe.fail(.unreachable)
+        await settings.check()
+        #expect(settings.checkedAt == completed && settings.status == .unavailable)
+        #expect(writes == 0 && settings.savedModel == nil)
+    }
+
     @Test func explicitModelOverrideCannotBeSilentlyChangedAndLegacyDoesNotProbeOllama() async {
         let probe = ModelProbeFixture()
         var writes = 0
