@@ -27,6 +27,7 @@ enum SupportIssue: String, Codable {
             case .missingAPIKey: return .credentialsUnavailable
             case .apiError(let status, _): return http(status)
             case .emptyResponse, .unparseableJSON: return .invalidResponse
+            case .unsupportedTask: return .setupRequired
             }
         }
         if let error = error as? OllamaLookupError {
@@ -80,7 +81,7 @@ enum SupportIssue: String, Codable {
 }
 
 struct SupportLookup: Codable, Equatable {
-    enum State: String, Codable { case notRun, capturing, querying, responseReceived, missingContext, noMeaning, cancelled, failed }
+    enum State: String, Codable { case notRun, capturing, querying, responseReceived, translationReceived, missingContext, noMeaning, cancelled, failed }
     var state: State = .notRun
     var issue: SupportIssue? = nil
 
@@ -90,6 +91,7 @@ struct SupportLookup: Codable, Equatable {
         case .capturing: "正在获取选词。"
         case .querying: "正在等待查词服务。"
         case .responseReceived: "已收到含原句的释义；仍需自行核对词义。"
+        case .translationReceived: "已收到句段译文；仍需核对原文与译文。"
         case .missingContext: "已收到响应，但没有对应原句。可补充语境；更换模型不能补回未捕获的原文。"
         case .noMeaning: "没有可用释义，或模型只返回了原词。"
         case .cancelled: "本次查询已取消。"
@@ -129,7 +131,10 @@ final class SupportDiagnostics: ObservableObject {
         case .cancelled: cancelled(channel)
         case .failure: set(.init(state: .failed, issue: issue ?? .unknown), channel)
         case .success(let result):
-            if AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext).notice != nil {
+            if request.task == .translation {
+                let valid = Translation.displayText(result.translation.textTranslation?.translatedText) != nil
+                set(.init(state: valid ? .translationReceived : .noMeaning, issue: valid ? nil : .noMeaning), channel)
+            } else if AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext).notice != nil {
                 set(.init(state: .noMeaning, issue: .noMeaning), channel)
             } else {
                 set(.init(state: LookupResultPresentation(request: request).sentence == nil ? .missingContext : .responseReceived), channel)

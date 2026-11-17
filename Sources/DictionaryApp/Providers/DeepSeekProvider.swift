@@ -22,10 +22,22 @@ final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
         !key.isEmpty && key.utf8.count <= 4096 && key.unicodeScalars.allSatisfy { (33...126).contains($0.value) }
     }
 
+    func translateText(_ text: String, targetLanguage: String) async throws -> TextTranslation {
+        let result = try await perform(target: text, context: "", containingSentence: nil, targetLanguage: targetLanguage, textTask: true)
+        guard let translated = result.textTranslation else { throw TranslationError.emptyResponse }
+        return translated
+    }
+
     func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
+        try await perform(target: target, context: context, containingSentence: containingSentence, targetLanguage: targetLanguage, textTask: false)
+    }
+
+    private func perform(target: String, context: String, containingSentence: String?, targetLanguage: String, textTask: Bool) async throws -> Translation {
         guard Self.validKey(apiKey) else { throw CloudAssistanceError.notConfigured }
         let prompt: PromptParts
-        if purpose == .lookup, LocalDictionaryPrompt.applies(target: target, context: context, sentence: containingSentence) {
+        if textTask {
+            prompt = TextTranslationPrompt.build(text: target, language: targetLanguage)
+        } else if purpose == .lookup, LocalDictionaryPrompt.applies(target: target, context: context, sentence: containingSentence) {
             prompt = LocalDictionaryPrompt.build(target: target, matches: [], targetLanguage: targetLanguage)
         } else if purpose == .lookup {
             prompt = CloudLookupPrompt.build(target: target, context: context, sentence: containingSentence, language: targetLanguage)
@@ -37,11 +49,11 @@ final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         var body: [String: Any] = [
-            "model": "deepseek-flash", "max_tokens": 1024, "stream": false,
+            "model": "deepseek-flash", "max_tokens": textTask ? 4096 : 1024, "stream": false,
             "thinking": ["type": "disabled"], "system": prompt.system,
             "messages": [["role": "user", "content": prompt.userInstruction]]
         ]
-        if purpose == .lookup { body["temperature"] = 0 }
+        if textTask || purpose == .lookup { body["temperature"] = 0 }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let config = configuration.copy() as! URLSessionConfiguration
         config.urlCache = nil
@@ -65,6 +77,7 @@ final class DeepSeekProvider: TranslationProvider, @unchecked Sendable {
                   envelope.content[0].type == "text", let text = envelope.content[0].text else {
                 throw CloudAssistanceError.invalidResponse
             }
+            if textTask { return Translation(textTranslation: try TextTranslation.decode(text)) }
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             let result = try decoder.decode(Translation.self, from: Data(JSONExtractor.extract(text).utf8))

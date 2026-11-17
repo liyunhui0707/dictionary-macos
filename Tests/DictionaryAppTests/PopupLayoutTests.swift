@@ -39,7 +39,7 @@ struct PopupLayoutTests {
         #expect(size.width <= 460)
     }
 
-    @Test func cloudControlsAreMeasuredOutsideScrollingAndRemainWithinScreen() async throws {
+    @Test func cloudAssistanceScrollsWithResultsAndRemainsWithinScreen() async throws {
         let request = try LookupRequest.manual(target: "bank", context: "We sat on the bank of the river.")
         let provider = ControlledProvider()
         let cloud = CloudAssistanceState(provider: provider)
@@ -49,7 +49,7 @@ struct PopupLayoutTests {
         state.phase = result(request, meaning: String(repeating: "Original meaning ", count: 100))
         _ = try await withHosting(state, cloud: cloud) { hosting in
             let initial = try await settle(hosting)
-            #expect(state.cloudControlsHeight > 28)
+            #expect(state.contentHeight > state.availableSize.height)
             #expect(initial.height <= 380)
             let scroll = try #require(findScrollView(hosting))
             let document = try #require(scroll.documentView)
@@ -62,7 +62,7 @@ struct PopupLayoutTests {
             await provider.succeed(call, meaning: String(repeating: "河岸 ", count: 100))
             await task.value
             let completed = try await settle(hosting)
-            #expect(state.cloudControlsHeight > 28)
+            #expect(state.contentHeight > state.availableSize.height)
             #expect(completed.height <= 380)
             #expect(scroll.contentView.bounds.minY < 1)
             #expect(TranslationPopupView(state: state, onClose: {}, cloud: cloud).toolbarTitle.contains("DeepSeek AI"))

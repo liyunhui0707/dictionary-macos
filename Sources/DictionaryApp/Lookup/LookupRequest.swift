@@ -11,11 +11,22 @@ struct LookupRequest: Sendable {
 
     let capture: SelectionLocation?
     let isManual: Bool
+    let task: LookupTask
+    // Local-only evidence. Never decoded from browser/extension metadata.
+    let screenContextCanAutoUse: Bool
 
     init(target: String, context: String?, containingSentence: String?, source: String,
-         capture: SelectionLocation? = nil, isManual: Bool = false) {
+         capture: SelectionLocation? = nil, isManual: Bool = false, task: LookupTask? = nil,
+         screenContextCanAutoUse: Bool = false) {
         self.target = target; self.context = context; self.containingSentence = containingSentence
         self.source = source; self.capture = capture; self.isManual = isManual
+        self.task = task ?? LookupTask.inferred(from: target)
+        self.screenContextCanAutoUse = screenContextCanAutoUse
+    }
+
+    func withTask(_ task: LookupTask) -> Self {
+        Self(target: target, context: context, containingSentence: containingSentence, source: source,
+             capture: capture, isManual: isManual, task: task, screenContextCanAutoUse: screenContextCanAutoUse)
     }
 
     var providerContext: String {
@@ -48,6 +59,7 @@ struct LookupRequest: Sendable {
         let legacyTrim = capture == nil || capture?.reliability == .legacyUnverified
         let target = legacyTrim ? rawTarget.trimmingCharacters(in: .whitespacesAndNewlines) : SelectionLocation.trim(rawTarget)
         guard !target.isEmpty else { throw LookupInputError.emptyTarget }
+        guard target.utf16.count <= 6000 else { throw LookupInputError.targetTooLong }
         if var location = capture {
             if location.reliability == .targetOnly {
                 location.range = nil; location.sentenceRange = nil
@@ -134,8 +146,13 @@ struct LookupRequest: Sendable {
 }
 
 enum LookupInputError: LocalizedError {
-    case emptyTarget
-    var errorDescription: String? { "Enter or select English text to translate." }
+    case emptyTarget, targetTooLong
+    var errorDescription: String? {
+        switch self {
+        case .emptyTarget: return "请输入或选中要处理的英文。"
+        case .targetTooLong: return "选中文字过长，请缩短选区后分段翻译。"
+        }
+    }
 }
 
 struct LookupResult {

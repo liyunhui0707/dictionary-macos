@@ -80,6 +80,14 @@ test('failed signing never writes a launchable manifest', async () => {
   fs.mkdirSync(resource,{recursive:true});fs.writeFileSync(path.join(resource,'oewn-2025.json.gz'),'synthetic-resource');
   fs.writeFileSync(path.join(resource,'../AppIcon.icns'),'synthetic-icon');
   fs.writeFileSync(path.join(resource, '../ReadingSample.html'), 'synthetic reading sample');
+  const pronunciation=path.join(resource,'../Pronunciation'); fs.mkdirSync(pronunciation);
+  const files={'cmudict.dict':'bank B AE1 NG K','LICENSE':'synthetic license'};
+  const provenance={files:{}};
+  for(const [name,text] of Object.entries(files)) {
+    fs.writeFileSync(path.join(pronunciation,name),text);
+    provenance.files[name]={sha256:require('node:crypto').createHash('sha256').update(text).digest('hex')};
+  }
+  fs.writeFileSync(path.join(pronunciation,'provenance.json'),JSON.stringify(provenance));
   const out=path.join(root,'build/package');fs.mkdirSync(out,{recursive:true});
   assert.throws(()=>packageApp(out,binary,{buildID:'test',sourceFingerprint:'abc'},()=>{throw Error('sign failed');}),/sign failed/);
   assert(!fs.existsSync(path.join(out,'build-manifest.json')));

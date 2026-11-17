@@ -50,8 +50,7 @@ final class CloudAssistanceState: ObservableObject {
             let outcome: LookupOutcome
             do {
                 try Task.checkCancellation()
-                let translation = try await provider.translate(target: request.target, context: request.providerContext,
-                    containingSentence: request.containingSentence, targetLanguage: language)
+                let translation = try await provider.translate(request, targetLanguage: language)
                 outcome = .success(LookupResult(request: request, translation: translation))
             } catch {
                 // Never surface arbitrary transport/provider bodies or credentials.
@@ -83,7 +82,7 @@ final class CloudAssistanceState: ObservableObject {
         guard selectedSource == .cloud, let result = phase.result,
               case .finished(let request, let outcome) = original, !outcome.isCancelled else { return false }
         // Only display the corresponding snapshot; a new/loading request cannot inherit this answer.
-        return request.target == result.request.target && request.providerContext == result.request.providerContext &&
+        return request.task == result.request.task && request.target == result.request.target && request.providerContext == result.request.providerContext &&
             request.containingSentence == result.request.containingSentence
     }
 

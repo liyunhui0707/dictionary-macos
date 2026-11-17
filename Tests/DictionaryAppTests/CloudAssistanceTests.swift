@@ -106,9 +106,9 @@ struct CloudAssistanceTests {
         #expect(cloud.selectedSource == .original)
     }
 
-    @Test func fixedCloudControlsLeaveABoundedScrollableResult() {
-        let size = PopupContentSize(available: CGSize(width: 420, height: 560), measuredHeight: 1500, controlsHeight: 92)
-        #expect(size.contentHeight + 85 + 92 + 12 <= 560)
+    @Test func cloudAssistanceSharesTheBoundedScrollableResult() {
+        let size = PopupContentSize(available: CGSize(width: 420, height: 560), measuredHeight: 1500)
+        #expect(size.contentHeight + 85 <= 560)
         #expect(size.contentHeight > 200)
     }
 

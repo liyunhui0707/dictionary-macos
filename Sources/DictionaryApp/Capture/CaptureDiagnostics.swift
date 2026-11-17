@@ -131,21 +131,21 @@ struct CaptureFailure: LocalizedError {
             return "未能恢复原剪贴板，已停止查词。剪贴板可能仍是刚才选中的内容；请检查后重新复制需要保留的内容。"
         }
         if details.reason == .sourceChanged {
-            return "The source app changed. Select the text and try again."
+            return "来源窗口已变化，请重新选中文字后再试。"
         }
         if details.issues.contains(where: { $0.code == .accessibilityNotTrusted }) {
-            return "This Dictionary process does not have Accessibility permission. Authorize this exact app in System Settings, then retry."
+            return "当前 Dictionary 尚无选词权限。请在系统设置中为当前应用开启辅助功能，再重试。"
         }
         if details.issues.contains(where: { $0.code == .noSelection }) {
-            return "The focused text element reported an empty selection; clipboard fallback did not yield text. Select an English word and retry."
+            return "没有读到选中文字。请先选中英文再试，也可以在主窗口输入。"
         }
         if details.issues.contains(where: { $0.code == .targetExtractionFailed }) {
-            return "Selection data was returned but could not be read as text. Try manual lookup or check QA diagnostics."
+            return "未能解析选区文字，可将原文粘贴到主窗口查询。"
         }
         if details.issues.contains(where: { $0.code == .axCallFailed }) {
-            return "Accessibility could not read the target app; clipboard fallback did not yield text. Retry or use manual lookup."
+            return "未能从当前软件读到选区，可重新选择，或将原文粘贴到主窗口。"
         }
-        return "The target app did not expose readable selected text, and clipboard fallback did not yield text. Try manual lookup or check QA diagnostics."
+        return "当前软件未提供可用的选区文字。可重新选择，或将原文粘贴到主窗口。"
     }
 }
 
@@ -203,9 +203,24 @@ final class NativeCapturePipeline {
         if let text = result.text.map({ isBooks ? SelectionLocation.trim($0) : $0 }), !text.isEmpty {
             // Books can append a citation to copied passages. Do not guess which
             // portion was selected or submit the citation as the lookup target.
-            if isBooks && (text.utf16.count > 2000 || text.unicodeScalars.contains(where: CharacterSet.newlines.contains)) {
+            if isBooks && text.utf16.count > 2000 {
                 details.add(CaptureIssue(code: .clipboardFallbackFailed, clipboardReason: .unusableText))
                 throw CaptureFailure(details: details)
+            }
+            if isBooks && text.unicodeScalars.contains(where: CharacterSet.newlines.contains) {
+                // Do not strip a guessed citation. Multi-paragraph selection is usable
+                // only if an unchanged native snapshot independently agrees exactly.
+                let after = ax()
+                try requireSource(details)
+                guard let before = report.booksSelection, let current = after.booksSelection,
+                      BooksSelectionReader.matches(before, current),
+                      SelectionLocation.sameUnits(SelectionLocation.trim(current.target), text) else {
+                    details.add(CaptureIssue(code: .clipboardFallbackFailed, clipboardReason: .unusableText))
+                    throw CaptureFailure(details: details)
+                }
+                details.strategy = .clipboardOnly
+                return CapturedContext(target: text, context: text, containingSentence: nil, diagnostics: details,
+                    capture: .init(reliability: .targetOnly, method: .clipboard))
             }
             var reason: CaptureReason = .contextUnavailable
             if !isBooks, let before = report.webSelection {

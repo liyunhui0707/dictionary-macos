@@ -8,7 +8,6 @@ final class PopupState: ObservableObject {
     @Published var isPinned: Bool = false
     @Published var availableSize = CGSize(width: 420, height: 560)
     @Published var contentHeight: CGFloat = 1
-    @Published var cloudControlsHeight: CGFloat = 1
 }
 
 /// Lets the user drag the window by clicking anywhere on the background.
@@ -183,7 +182,9 @@ private struct CoordinatorPopupView: View {
     var body: some View {
         TranslationPopupView(state: state, onClose: onClose, cloud: coordinator.selectionCloud,
             primaryLabel: coordinator.primaryLabel, primaryIsCloud: coordinator.primaryIsCloud,
-            onConfirmScreenContext: { coordinator.confirmScreenContext($0) })
+            onConfirmScreenContext: { coordinator.confirmScreenContext($0) },
+            onReviewContext: { coordinator.confirmScreenContext($0, editedContext: $1, useContext: $2) },
+            onChangeTask: { coordinator.submit($0.withTask($1), to: .selection) })
     }
 }
 

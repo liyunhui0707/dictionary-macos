@@ -33,6 +33,50 @@ struct DeepSeekProviderTests {
         #expect(CloudProtocol.requests.isEmpty)
     }
 
+    @Test func fullTextKeychainRouteUsesCompleteSourceAndDedicatedResponse() async throws {
+        let store = ProviderCredentialFixture()
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [CloudProtocol.self]
+        let translated = #"{"translated_text":"不要发送 12 个箱子。Alice 保留了 vqxtralen。"}"#
+        let data = try JSONSerialization.data(withJSONObject: ["stop_reason": "end_turn", "content": [["type":"text", "text":translated]]])
+        CloudProtocol.reset(status: 200, body: data)
+        let provider = KeychainDeepSeekProvider(store: store, configuration: config, purpose: .lookup)
+        let source = "Do not send 12 boxes. Alice kept vqxtralen."
+        let request = try LookupRequest.manual(target: source, context: "Must not replace selected text.")
+        #expect(await store.reads == 0)
+        let result = try await provider.translate(request, targetLanguage: "中文")
+        #expect(result.textTranslation?.translatedText.contains("12") == true)
+        #expect(result.partOfSpeech == nil && result.meaningInContext.isEmpty)
+        #expect(await store.reads == 1 && CloudProtocol.requests.count == 1)
+        let body = CloudProtocol.body(try #require(CloudProtocol.requests.first))
+        let payload = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(payload["messages"] as? [[String: String]])
+        let input = try #require(JSONSerialization.jsonObject(with: Data(messages[0]["content"]!.utf8)) as? [String: String])
+        #expect(input["source_text"] == source)
+        #expect(payload["max_tokens"] as? Int == 4096)
+    }
+
+    @Test func ollamaFullTextRouteDoesNotUseDictionaryPromptOrAcceptShortGlossSchema() async throws {
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [CloudProtocol.self]
+        let provider = OllamaProvider(session: URLSession(configuration: config))
+        let source = "The company checked the equipment. The report contained observations."
+        for valid in [true, false] {
+            let content = valid ? #"{"translated_text":"公司检查了设备。报告包含观察记录。"}"# : #"{"meaning_in_context":"公司"}"#
+            let data = try JSONSerialization.data(withJSONObject: ["message": ["role":"assistant", "content":content]])
+            CloudProtocol.reset(status: 200, body: data)
+            do {
+                let result = try await provider.translateText(source, targetLanguage: "中文")
+                #expect(valid && result.translatedText.contains("报告"))
+            } catch { #expect(!valid) }
+            #expect(CloudProtocol.requests.count == 1)
+            let body = CloudProtocol.body(try #require(CloudProtocol.requests.first))
+            let payload = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let messages = try #require(payload["messages"] as? [[String: String]])
+            #expect(messages[0]["content"]?.contains("translated_text") == true)
+            #expect(messages[0]["content"]?.contains("part_of_speech") == false)
+            #expect(messages[1]["content"]?.contains("company") == true)
+        }
+    }
+
     private func provider() -> DeepSeekProvider {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [CloudProtocol.self]

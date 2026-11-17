@@ -6,7 +6,7 @@ struct CloudAssistanceView: View {
     var originalLabel = "原始 AI"
 
     var body: some View {
-        if let offer = state.offer {
+        if let offer = state.offer, state.isConfigured {
             VStack(alignment: .leading, spacing: 6) {
                 if state.phase.isLoading || state.phase.result != nil {
                     Picker("释义来源", selection: Binding(get: { state.selectedSource }, set: { state.selectSource($0) })) {
@@ -27,7 +27,7 @@ struct CloudAssistanceView: View {
                             .accessibilityIdentifier("ask-deepseek")
                     }
                     Text(state.isConfigured ?
-                         "将发送单词、语境及选中位置，API 可能产生费用。" :
+                         "主动调用会发送当前文本与可用语境，API 可能产生费用。" :
                          "云端辅助未开启，可在偏好设置中配置。")
                         .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                 case .loading(_, let startedAt):
@@ -63,11 +63,11 @@ struct CloudAssistanceView: View {
 struct CloudInputPreview: View {
     let request: LookupRequest
     var body: some View {
-        DisclosureGroup("发送给 DeepSeek 的内容") {
+        DisclosureGroup("查看云端发送内容") {
             VStack(alignment: .leading, spacing: 6) {
                 Text(request.target).bold()
-                Text(request.context ?? request.target)
-                if let sentence = request.containingSentence {
+                if request.task == .dictionary, let context = request.context, context != request.target { Text(context) }
+                if request.task == .dictionary, let sentence = request.containingSentence, sentence != request.context, sentence != request.target {
                     Text("随语境提供的句子").foregroundStyle(DictionaryStyle.secondary)
                     Text(sentence)
                 }

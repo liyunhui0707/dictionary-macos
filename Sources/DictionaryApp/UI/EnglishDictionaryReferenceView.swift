@@ -13,7 +13,7 @@ struct EnglishDictionaryReferenceView: View {
     var body: some View {
         DisclosureGroup("英文词典参考", isExpanded: $reference.expanded) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("真实英文义项，供你核对；未自动匹配当前语境。")
+                Text("词典原始义项，未按当前语境排序。")
                     .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                 if reference.unavailable {
                     Text("暂时无法打开词典参考。")
@@ -41,12 +41,14 @@ struct EnglishDictionaryReferenceView: View {
                 } else {
                     Text("正在打开本地词典…").foregroundStyle(DictionaryStyle.secondary)
                 }
-                Text("Open English Wordnet 2025 · OEWN team & Princeton WordNet。英文精简数据，不含中文词典释义。")
-                    .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-                HStack {
-                    Link("来源", destination: URL(string: "https://github.com/globalwordnet/english-wordnet/releases/tag/2025-edition")!)
-                    Link("许可与署名", destination: URL(string: "https://github.com/globalwordnet/english-wordnet/blob/2025-edition/LICENSE.md")!)
-                }.font(.system(size: 12))
+                DisclosureGroup("来源与许可") {
+                    Text("Open English Wordnet 2025 · OEWN team & Princeton WordNet。英文精简数据，不含中文词典释义。")
+                        .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                    HStack {
+                        Link("来源", destination: URL(string: "https://github.com/globalwordnet/english-wordnet/releases/tag/2025-edition")!)
+                        Link("许可与署名", destination: URL(string: "https://github.com/globalwordnet/english-wordnet/blob/2025-edition/LICENSE.md")!)
+                    }.font(.system(size: 12))
+                }
             }
             .font(.system(size: 13)).padding(.top, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,9 +75,6 @@ private struct EnglishSenseList: View {
                         ForEach(Array(sense.examples.prefix(2).enumerated()), id: \.offset) { _, example in
                             Text("词典例句：\(example)").foregroundStyle(DictionaryStyle.secondary)
                         }
-                        DisclosureGroup("条目编号") {
-                            Text("Sense: \(sense.id) · Synset: \(sense.synsetID)")
-                        }.font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
                     }.padding(.vertical, 4)
                 } label: {
                     Text("\(partOfSpeech(sense.partOfSpeech)) · \(sense.definition)").lineLimit(2)

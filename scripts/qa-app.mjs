@@ -111,6 +111,24 @@ export function assertSigningIdentityAvailable(identity, listing) {
   if (!fingerprints.includes(identity.toUpperCase())) throw Error('Requested code-signing identity is not available; no build or permission change performed');
 }
 
+export function verifyPronunciationBundle(resource) {
+  const base = ['Contents/Resources/Pronunciation', 'Pronunciation'].map(p=>path.join(resource,p))
+    .find(p=>fs.existsSync(p));
+  if(!base || fs.lstatSync(base).isSymbolicLink()) throw Error('Missing or unsafe pronunciation resources');
+  for(const name of ['cmudict.dict','LICENSE','provenance.json']) {
+    const file=path.join(base,name);
+    if(!fs.existsSync(file) || fs.lstatSync(file).isSymbolicLink() || !fs.lstatSync(file).isFile())
+      throw Error('Missing or unsafe pronunciation resource: '+name);
+  }
+  const provenance=JSON.parse(fs.readFileSync(path.join(base,'provenance.json'),'utf8'));
+  for(const name of ['cmudict.dict','LICENSE']) {
+    const data=fs.readFileSync(path.join(base,name));
+    if(provenance.files?.[name]?.sha256 !== crypto.createHash('sha256').update(data).digest('hex'))
+      throw Error('Pronunciation resource checksum mismatch: '+name);
+  }
+  return base;
+}
+
 export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions(), includeQA=true, extensionSource=path.join(project,'extensions/chromium')) {
   const version=metadata.productVersion ?? fs.readFileSync(path.join(project,'VERSION'),'utf8').trim();
   if(!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) throw Error('Invalid product VERSION');
@@ -123,6 +141,7 @@ export function packageApp(out, binary, metadata, invoke=run, signing=signingOpt
   if(!['Contents/Resources',''].some(prefix=>fs.existsSync(path.join(resource,prefix,'EnglishDictionary/oewn-2025.json.gz'))) || fs.lstatSync(resource).isSymbolicLink()) throw Error('Missing or unsafe dictionary resource bundle');
   const sample=['Contents/Resources/ReadingSample.html','ReadingSample.html'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
   if(!sample || fs.lstatSync(sample).isSymbolicLink() || !fs.lstatSync(sample).isFile()) throw Error('Missing or unsafe reading sample resource');
+  verifyPronunciationBundle(resource);
   fs.cpSync(resource,path.join(app,'Contents/Resources',resourceName),{recursive:true,errorOnExist:true,force:false});
   const icon = ['Contents/Resources/AppIcon.icns','AppIcon.icns'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
   if(!icon || fs.lstatSync(icon).isSymbolicLink() || !fs.lstatSync(icon).isFile()) throw Error('Missing or unsafe app icon resource');

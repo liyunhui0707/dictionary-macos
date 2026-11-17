@@ -10,17 +10,22 @@ struct LookupResultView: View {
     var primaryLabel: String?
     var showsAdditionalMeanings: Bool
     var onConfirmScreenContext: ((UUID) -> Void)?
+    var onReviewContext: ((UUID, String?, Bool) -> Bool)?
+    var onChangeTask: ((LookupRequest, LookupTask) -> Void)?
 
     init(phase: LookupPhase, layout: Layout = .standard, onCancel: (() -> Void)? = nil,
          cloud: CloudAssistanceState? = nil, showsCloudControls: Bool = true,
          primaryLabel: String? = nil, showsAdditionalMeanings: Bool = true,
-         onConfirmScreenContext: ((UUID) -> Void)? = nil) {
+         onConfirmScreenContext: ((UUID) -> Void)? = nil,
+         onReviewContext: ((UUID, String?, Bool) -> Bool)? = nil,
+         onChangeTask: ((LookupRequest, LookupTask) -> Void)? = nil) {
         self.phase = phase; self.layout = layout; self.onCancel = onCancel
         _cloud = ObservedObject(wrappedValue: cloud ?? CloudAssistanceState(provider: nil))
         self.showsCloudControls = showsCloudControls
         self.primaryLabel = primaryLabel
         self.showsAdditionalMeanings = showsAdditionalMeanings
         self.onConfirmScreenContext = onConfirmScreenContext
+        self.onReviewContext = onReviewContext; self.onChangeTask = onChangeTask
     }
 
     var displayedPhase: LookupPhase { cloud.displayedPhase(for: phase) }
@@ -32,22 +37,13 @@ struct LookupResultView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if showsCloudControls { CloudAssistanceView(state: cloud, originalLabel: primaryLabel ?? "原始 AI") }
+            if let onChangeTask, let request = switchableRequest {
+                LookupTaskSwitch(request: request) { onChangeTask(request, $0) }
+            }
             switch displayedPhase {
             case .reviewingContext(let request, let id):
-                Text(request.target).font(DictionaryStyle.wordFont(compact: layout == .popup))
-                Label("屏幕语境 · 请核对", systemImage:"viewfinder").font(.system(size:13,weight:.medium))
-                Text(request.context ?? "").font(.system(size:15,design:.serif)).lineSpacing(3)
-                Text("这是本地文字识别得到的可能原句，尚未发送查询。请确认它对应选中的词。")
-                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
-                Text("确认后将交给 \(primaryLabel ?? "当前查词服务")；使用云端服务时会发送单词和这段原句。图片不会发送或保存。")
-                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
-                HStack {
-                    if let confirm=onConfirmScreenContext {
-                        Button("使用这段语境查词") { confirm(id) }.accessibilityIdentifier("screen-context-confirm")
-                    }
-                    if let onCancel { Button("放弃",action:onCancel) }
-                }
+                ScreenContextReviewView(request: request, id: id, providerLabel: primaryLabel ?? "当前服务",
+                    onConfirm: onReviewContext ?? { id, _, _ in onConfirmScreenContext?(id); return true }, onCancel: onCancel).id(id)
             case .idle:
                 Label("选中英文单词，按 ⌥D 查词。", systemImage: "text.cursor")
                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
@@ -70,20 +66,28 @@ struct LookupResultView: View {
                 }
             case .finished(let request, let outcome):
                 switch outcome {
-                case .success(let result): resultContent(request, translation: result.translation)
+                case .success(let result):
+                    if request.task == .translation {
+                        TextTranslationResultView(request: request, translation: result.translation.textTranslation,
+                            providerLabel: cloud.showsCloudAnswer(for: phase) ? "DeepSeek AI" : primaryLabel ?? "AI")
+                    } else { resultContent(request, translation: result.translation) }
                 case .failure(let message, _):
                     inputSummary(request)
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("暂时无法完成查词", systemImage: "exclamationmark.circle").font(.system(size: 15, weight: .medium))
+                        Label("暂时无法完成\(request.task.label)", systemImage: "exclamationmark.circle").font(.system(size: 15, weight: .medium))
                         Text(message).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-                        Text(request.target.isEmpty ? "也可以在主窗口手动输入单词和语境。" : "请检查翻译服务，然后重新查词。")
+                        Text(request.target.isEmpty ? "也可以在主窗口手动输入单词和语境。" : "输入已保留，可检查服务后重新提交。")
                             .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                     }.padding(14).background(DictionaryStyle.surface, in: RoundedRectangle(cornerRadius: 10))
                 case .cancelled:
                     Text("已取消查词").font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
                 }
             }
-            if let offer = cloud.offer { CloudInputPreview(request: offer.request).id(offer.id) }
+            if showsCloudControls, cloud.isConfigured, cloud.offer != nil {
+                Divider()
+                CloudAssistanceView(state: cloud, originalLabel: primaryLabel ?? "原始 AI")
+            }
+            if cloud.isConfigured, let offer = cloud.offer { CloudInputPreview(request: offer.request).id(offer.id) }
             // Request identity and source safety remain independent of the selected AI answer.
             if let target = referenceTarget { EnglishDictionaryReferenceView(target: target).id(target) }
         }
@@ -95,7 +99,14 @@ struct LookupResultView: View {
     private var referenceTarget: String? {
         switch phase {
         case .idle, .reviewingContext: return nil
-        case .loading(let request, _), .finished(let request, _): return request.target.isEmpty ? nil : request.target
+        case .loading(let request, _), .finished(let request, _): return request.task == .dictionary && !request.target.isEmpty ? request.target : nil
+        }
+    }
+
+    private var switchableRequest: LookupRequest? {
+        switch displayedPhase {
+        case .loading(let request, _), .finished(let request, _): return request.target.isEmpty ? nil : request
+        case .idle, .reviewingContext: return nil
         }
     }
 
@@ -106,13 +117,14 @@ struct LookupResultView: View {
         let hasMeaning = Translation.displayText(translation.meaningInContext) != nil
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(request.target).font(DictionaryStyle.wordFont(compact: layout == .popup))
+                Text(request.target).font(request.target.count <= 40 ? DictionaryStyle.wordFont(compact: layout == .popup) : .system(size: 18, weight: .medium))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if hasMeaning, let pos = Translation.displayText(translation.partOfSpeech) {
                     Text(pos).font(.system(size: 12, design: .serif).italic()).foregroundStyle(DictionaryStyle.secondary)
                 }
             }
+            PronunciationView(word: request.target).id(request.target)
             HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: 1).fill(DictionaryStyle.accent).frame(width: 3)
                 VStack(alignment: .leading, spacing: 5) {
@@ -159,7 +171,7 @@ struct LookupResultView: View {
     }
 
     @ViewBuilder private func capturedContext(_ presentation: LookupResultPresentation, source: String) -> some View {
-        if let context = presentation.context {
+        if let context = presentation.context, context != presentation.sentence {
             DisclosureGroup("\(presentation.contextLabel) · \(source)") {
                 Text(context).font(.system(size: 13)).lineSpacing(3).padding(.top, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,11 +181,12 @@ struct LookupResultView: View {
 
     @ViewBuilder private func inputSummary(_ request: LookupRequest) -> some View {
         if !request.target.isEmpty {
-            Text(request.target).font(DictionaryStyle.wordFont(compact: layout == .popup))
+            Text(request.task == .translation ? "正在翻译所选英文" : request.target)
+                .font(request.task == .translation ? .system(size: 17, weight: .medium) : DictionaryStyle.wordFont(compact: layout == .popup))
             let presentation = LookupResultPresentation(request: request)
             if let sentence = presentation.sentence, let label = presentation.sentenceLabel { row(label, sentence) }
             capturedContext(presentation, source: request.source)
-            if let notice = presentation.notice { Text(notice).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary) }
+            if request.task == .dictionary, let notice = presentation.notice { Text(notice).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary) }
             Divider()
         }
     }

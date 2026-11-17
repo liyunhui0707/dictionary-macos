@@ -19,6 +19,10 @@ function fixture(mode = 'success') {
     fs.writeFileSync(path.join(resource, 'oewn-2025.json.gz'), 'synthetic-resource');
     fs.writeFileSync(path.join(resource, '../AppIcon.icns'), 'synthetic-icon');
     fs.writeFileSync(path.join(resource, '../ReadingSample.html'), 'synthetic reading sample');
+  const pronunciation=path.join(resource,'../Pronunciation'); fs.mkdirSync(pronunciation);
+  const files={'cmudict.dict':'bank B AE1 NG K','LICENSE':'synthetic license'}; const provenance={files:{}};
+  for(const [name,text] of Object.entries(files)) { fs.writeFileSync(path.join(pronunciation,name),text); provenance.files[name]={sha256:require('node:crypto').createHash('sha256').update(text).digest('hex')}; }
+  fs.writeFileSync(path.join(pronunciation,'provenance.json'),JSON.stringify(provenance));
   }
   const tool = `#!${process.execPath}
 const fs = require('node:fs');
@@ -167,6 +171,10 @@ test('QA packaging accepts native SwiftPM flat resource bundles too', async () =
   fs.writeFileSync(path.join(directory, 'oewn-2025.json.gz'), 'synthetic-flat-resource');
   fs.writeFileSync(path.join(directory, '../AppIcon.icns'), 'synthetic-icon');
   fs.writeFileSync(path.join(directory, '../ReadingSample.html'), 'synthetic reading sample');
+  const pronunciation=path.join(directory,'../Pronunciation'); fs.mkdirSync(pronunciation);
+  const files={'cmudict.dict':'bank B AE1 NG K','LICENSE':'synthetic license'}; const provenance={files:{}};
+  for(const [name,text] of Object.entries(files)) { fs.writeFileSync(path.join(pronunciation,name),text); provenance.files[name]={sha256:require('node:crypto').createHash('sha256').update(text).digest('hex')}; }
+  fs.writeFileSync(path.join(pronunciation,'provenance.json'),JSON.stringify(provenance));
   packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => '');
   assert.match(fs.readFileSync(path.join(f.app, 'Contents/Info.plist'), 'utf8'), /CFBundleIconFile/);
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');

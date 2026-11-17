@@ -43,6 +43,9 @@ final class LookupServiceSettings: ObservableObject {
 
 struct UnconfiguredLookupProvider: TranslationProvider {
     let cloudDisabled: Bool
+    func translateText(_ text: String, targetLanguage: String) async throws -> TextTranslation {
+        throw LookupServiceSetupError(cloudDisabled: cloudDisabled)
+    }
     func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
         throw LookupServiceSetupError(cloudDisabled: cloudDisabled)
     }

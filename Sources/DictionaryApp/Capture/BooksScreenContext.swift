@@ -5,7 +5,7 @@ import Vision
 import CryptoKit
 
 enum ScreenContextStatus: String, Codable {
-    case permissionMissing, windowUnavailable, captureUnavailable, sourceChanged, pixelsChanged, textUnavailable, recognitionFailed, timedOut, needsConfirmation
+    case permissionMissing, windowUnavailable, captureUnavailable, sourceChanged, pixelsChanged, textUnavailable, recognitionFailed, timedOut, needsConfirmation, automaticallyUsed
 }
 
 struct BooksScreenSnapshot {
@@ -35,6 +35,8 @@ enum BooksScreenFallback {
         if enabled && isBooks && permission && !nativeHasSentence && isCurrent() { before = await snapshot() }
         else { before = nil }
         let original = try await native()
+        // The complete selected text is already the translation source.
+        guard LookupTask.inferred(from: original.target) == .dictionary else { return original }
         var recognitionBudgetMilliseconds: Int?
         var recognitionElapsedMilliseconds: Int?
         func rejected(_ status:ScreenContextStatus) -> CapturedContext {
@@ -82,7 +84,9 @@ enum BooksScreenFallback {
         details.screenRecognitionBudgetMilliseconds=recognitionBudgetMilliseconds
         details.screenRecognitionElapsedMilliseconds=recognitionElapsedMilliseconds
         return CapturedContext(target:original.target,context:sentence,containingSentence:sentence,diagnostics:details,
-            capture:.init(reliability:.heuristic,method:.screenOCR))
+            capture:.init(reliability:.heuristic,method:.screenOCR),
+            screenContextCanAutoUse: ScreenContextSafety.eligible(sentence: sentence, lines: lines,
+                hasSpellingIssue: ScreenContextSafety.hasSpellingIssue))
     }
 }
 
@@ -90,13 +94,27 @@ enum BooksScreenFallback {
 @MainActor
 final class BooksScreenSettings: ObservableObject {
     static let preference = "booksScreenContextEnabled"
+    static let automaticLocalPreference = "booksScreenContextAutomaticLocal"
+    static let automaticCloudPreference = "booksScreenContextAutomaticCloud"
     @Published private(set) var enabled: Bool
+    @Published private(set) var automaticLocal: Bool
+    @Published private(set) var automaticCloud: Bool
     @Published private(set) var permissionGranted = false
     private let persist: (Bool) -> Void
-    init(enabled: Bool = false, persist: @escaping (Bool) -> Void = { _ in }) {
+    private let persistAutomaticLocal: (Bool) -> Void
+    private let persistAutomaticCloud: (Bool) -> Void
+    init(enabled: Bool = false, persist: @escaping (Bool) -> Void = { _ in },
+         automaticLocal: Bool = false, automaticCloud: Bool = false,
+         persistAutomaticLocal: @escaping (Bool) -> Void = { _ in },
+         persistAutomaticCloud: @escaping (Bool) -> Void = { _ in }) {
         self.enabled=enabled; self.persist=persist
+        self.automaticLocal = automaticLocal; self.automaticCloud = automaticCloud
+        self.persistAutomaticLocal = persistAutomaticLocal; self.persistAutomaticCloud = persistAutomaticCloud
     }
     func setEnabled(_ value: Bool) { enabled=value; persist(value) }
+    func setAutomaticLocal(_ value: Bool) { automaticLocal = value; persistAutomaticLocal(value) }
+    func setAutomaticCloud(_ value: Bool) { automaticCloud = value; persistAutomaticCloud(value) }
+    func automaticallyUsesContext(isCloud: Bool) -> Bool { enabled && (isCloud ? automaticCloud : automaticLocal) }
     func refresh() { permissionGranted=CGPreflightScreenCaptureAccess() }
     func requestPermission() { _ = CGRequestScreenCaptureAccess(); refresh() }
 }
