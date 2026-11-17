@@ -75,7 +75,7 @@ struct SupportDiagnosticsView: View {
                 }.accessibilityIdentifier("preview-support-report")
                 if preparationFailed { Text("暂时无法生成报告，请稍后重试。") }
                 Link("到 GitHub 反馈", destination: Self.feedbackURL)
-                Text("请自行说明操作步骤、预期和实际结果。分享截图前遮住私人内容；不要提交密钥、完整书籍或聊天记录。")
+                Text("日常反馈记下“哪个软件、选了什么、哪里不对”即可，能用合成例句复现更好。无需先重复验收；版本和诊断报告可稍后补充。分享截图前遮住私人内容，不要提交密钥、完整书籍或聊天记录。")
                     .foregroundStyle(DictionaryStyle.secondary)
             }
         }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
