@@ -47,6 +47,10 @@ test('packaging passes the selected certificate and isolates testing bundle name
   fs.mkdirSync(resources,{recursive:true});fs.writeFileSync(path.join(resources,'oewn-2025.json.gz'),'data');
   fs.writeFileSync(path.join(resources,'../AppIcon.icns'),'icon');
   fs.writeFileSync(path.join(resources, '../ReadingSample.html'), 'synthetic reading sample');
+  const pronunciation=path.join(resources,'../Pronunciation'); fs.mkdirSync(pronunciation);
+  const files={'cmudict.dict':'bank B AE1 NG K','LICENSE':'synthetic license'}; const provenance={files:{}};
+  for(const [name,text] of Object.entries(files)) { fs.writeFileSync(path.join(pronunciation,name),text); provenance.files[name]={sha256:require('node:crypto').createHash('sha256').update(text).digest('hex')}; }
+  fs.writeFileSync(path.join(pronunciation,'provenance.json'),JSON.stringify(provenance));
   const calls=[];
   const app=packageApp(packageOut,binary,{buildID:'test'},(cmd,args)=>calls.push([cmd,args]),signingOptions('testing',fingerprint));
   assert.deepEqual(calls[0],['/usr/bin/codesign',['--sign',fingerprint,app]]);

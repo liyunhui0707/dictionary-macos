@@ -48,13 +48,23 @@ final class OllamaProvider: TranslationProvider {
         return PromptBuilder.build(target: target, context: context, containingSentence: containingSentence, targetLanguage: targetLanguage)
     }
 
-    func translate(
+    func translateText(_ text: String, targetLanguage: String) async throws -> TextTranslation {
+        let result = try await perform(target: text, context: "", containingSentence: nil, targetLanguage: targetLanguage, textTask: true)
+        guard let translated = result.textTranslation else { throw TranslationError.emptyResponse }
+        return translated
+    }
+
+    func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
+        try await perform(target: target, context: context, containingSentence: containingSentence, targetLanguage: targetLanguage, textTask: false)
+    }
+
+    private func perform(
         target: String,
         context: String,
         containingSentence: String?,
-        targetLanguage: String
+        targetLanguage: String, textTask: Bool
     ) async throws -> Translation {
-        let prompt = try await preparePrompt(
+        let prompt = textTask ? TextTranslationPrompt.build(text: target, language: targetLanguage) : try await preparePrompt(
             target: target,
             context: context,
             containingSentence: containingSentence,
@@ -78,7 +88,9 @@ final class OllamaProvider: TranslationProvider {
                 ["role": "user", "content": prompt.userInstruction]
             ]
         ]
-        if usesContextPrompt(target: target, context: context, sentence: containingSentence) {
+        if textTask {
+            body["options"] = ["temperature": 0, "num_predict": 4096]
+        } else if usesContextPrompt(target: target, context: context, sentence: containingSentence) {
             body["format"] = LocalContextPrompt.responseFormat
             body["options"] = ["temperature": 0]
         }
@@ -106,6 +118,7 @@ final class OllamaProvider: TranslationProvider {
         let rawContent = envelope.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawContent.isEmpty else { throw TranslationError.emptyResponse }
 
+        if textTask { return Translation(textTranslation: try TextTranslation.decode(rawContent)) }
         let cleaned = JSONExtractor.extract(rawContent)
         guard let jsonData = cleaned.data(using: .utf8) else {
             throw TranslationError.unparseableJSON(rawOutput: rawContent)

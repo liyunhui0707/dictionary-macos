@@ -5,6 +5,8 @@ import Combine
 final class ManualLookupState: ObservableObject {
     @Published var target = ""
     @Published var context = ""
+    @Published var mode: LookupMode = .automatic
+    var effectiveTask: LookupTask { mode.task ?? LookupTask.inferred(from: target) }
     @Published private(set) var validationMessage: String?
     let coordinator: LookupCoordinator
 
@@ -14,7 +16,8 @@ final class ManualLookupState: ObservableObject {
     @discardableResult
     func submit() -> LookupOperation? {
         do {
-            let request = try LookupRequest.manual(target: target, context: context)
+            let base = try LookupRequest.manual(target: target, context: context)
+            let request = mode.task.map(base.withTask) ?? base
             validationMessage = nil
             return coordinator.submit(request, to: .manual)
         } catch {

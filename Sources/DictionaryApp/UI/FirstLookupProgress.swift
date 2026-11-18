@@ -55,7 +55,9 @@ final class FirstLookupProgress: ObservableObject {
             // Only a response following an observed submission is new evidence.
             guard (channel == .manual ? manual : reading) == .querying else { return }
             lastResponseAt = now()
-            if AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext).notice != nil {
+            if request.task == .translation {
+                check = Translation.displayText(result.translation.textTranslation?.translatedText) == nil ? .noMeaning : .responseReceived
+            } else if AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext).notice != nil {
                 check = .noMeaning
             }
             else if LookupResultPresentation(request: request).sentence == nil ||

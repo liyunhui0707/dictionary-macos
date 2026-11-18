@@ -87,7 +87,16 @@ struct KeychainDeepSeekProvider: TranslationProvider {
     var configuration: URLSessionConfiguration = .ephemeral
     var purpose: DeepSeekProvider.Purpose = .assistance
 
+    func translateText(_ text: String, targetLanguage: String) async throws -> TextTranslation {
+        try await authorizedProvider().translateText(text, targetLanguage: targetLanguage)
+    }
+
     func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
+        try await authorizedProvider().translate(target: target, context: context, containingSentence: containingSentence,
+                                                 targetLanguage: targetLanguage)
+    }
+
+    private func authorizedProvider() async throws -> DeepSeekProvider {
         let key: String
         do {
             try Task.checkCancellation()
@@ -99,7 +108,6 @@ struct KeychainDeepSeekProvider: TranslationProvider {
         catch { throw CloudAssistanceError.credentialUnavailable }
         // A settings change or dismissal while Keychain is prompting must not send a request.
         try Task.checkCancellation()
-        return try await DeepSeekProvider(apiKey: key, configuration: configuration, purpose: purpose).translate(target: target, context: context,
-            containingSentence: containingSentence, targetLanguage: targetLanguage)
+        return DeepSeekProvider(apiKey: key, configuration: configuration, purpose: purpose)
     }
 }

@@ -31,7 +31,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         self.support = support ?? SupportDiagnostics()
         self.booksScreenSettings = booksScreenSettings ?? BooksScreenSettings()
         self.extensionSetup = extensionSetup ?? BrowserExtensionSetup()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 560),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Dictionary · 偏好设置"
         window.isReleasedWhenClosed = false
@@ -48,7 +48,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
             DictionarySettingsView(settings: settings, localSettings: localSettings, section: section,
                     readiness: readiness, serviceSettings: serviceSettings, progress: progress, support: support,
                     booksScreenSettings: booksScreenSettings, extensionSetup: extensionSetup,
-                    onCopyExtensionToken: onCopyExtensionToken, onExample: onExample).frame(width: 580, height: height))
+                    onCopyExtensionToken: onCopyExtensionToken, onExample: onExample).frame(width: 680, height: height))
         window?.contentViewController = host
         window?.setContentSize(host.view.fittingSize)
         showWindow(nil)
@@ -62,7 +62,14 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
 }
 
 enum DictionarySettingsSection: String, CaseIterable {
-    case started = "开始使用", general = "通用", service = "查词服务", local = "本地模型", cloud = "DeepSeek", support = "问题反馈"
+    case started = "开始使用", general = "通用", service = "翻译与发音", local = "本地模型", cloud = "DeepSeek", support = "帮助", reading = "阅读与权限"
+    static let categories: [Self] = [.general, .service, .reading, .support]
+    var category: Self {
+        switch self { case .local, .cloud: return .service; case .started: return .support; default: return self }
+    }
+    var symbol: String {
+        switch category { case .general: return "slider.horizontal.3"; case .service: return "character.bubble"; case .reading: return "book"; default: return "questionmark.circle" }
+    }
 }
 
 @MainActor
@@ -107,39 +114,38 @@ struct DictionarySettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    DictionaryMark()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("偏好设置").font(.system(size: 23, weight: .medium))
-                        Text("让查词更适合你的阅读习惯。")
-                            .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-                    }
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Dictionary").font(.system(size: 15, weight: .semibold)).padding(.bottom, 16)
+                ForEach(DictionarySettingsSection.categories, id: \.self) { category in
+                    Button { navigation.section = category } label: {
+                        Label(category.rawValue, systemImage: category.symbol)
+                            .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(9)
+                            .background(navigation.section.category == category ? DictionaryStyle.accent.opacity(0.12) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 7))
+                    }.buttonStyle(.plain)
                 }
-                Picker("设置分类", selection: $navigation.section) {
-                    ForEach(DictionarySettingsSection.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().padding(.top, 12)
-            }.padding(28)
+                Spacer()
+            }.padding(14).frame(width: 145).background(DictionaryStyle.surface)
             Divider()
-            ScrollView {
-                Group {
-                    switch navigation.section {
-                    case .started: GettingStartedView(service: serviceSettings, local: localSettings,
-                        readiness: readiness, progress: progress, extensionSetup: extensionSetup,
-                        booksScreenSettings: booksScreenSettings, readingRoute: $navigation.readingRoute,
-                        onService: { navigation.section = .service },
-                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general },
-                        onExample: onExample, onCopyExtensionToken: onCopyExtensionToken)
-                    case .general: general
-                    case .service: LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
-                    case .local: LocalModelSettingsView(settings: localSettings)
-                    case .cloud: CloudSettingsView(settings: settings)
-                    case .support: SupportDiagnosticsView(support: support, service: serviceSettings,
-                        local: localSettings, readiness: readiness, onService: { navigation.section = .service },
-                        onLocal: { navigation.section = .local }, onPermission: { navigation.section = .general })
-                    }
-                }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(navigation.section.category.rawValue).font(.system(size: 20, weight: .semibold)).padding(20)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        switch navigation.section {
+                        case .general: general
+                        case .reading: reading
+                        case .service, .local, .cloud: service
+                        case .started: gettingStarted
+                        case .support:
+                            Button("开始使用指南") { navigation.section = .started }
+                            SupportDiagnosticsView(support: support, service: serviceSettings,
+                                local: localSettings, readiness: readiness, onService: { navigation.section = .service },
+                                onLocal: { navigation.section = .local }, onPermission: { navigation.section = .reading })
+                        }
+                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }.background(DictionaryStyle.paper).foregroundStyle(DictionaryStyle.ink).tint(DictionaryStyle.accent)
             .onAppear { readiness.refresh(); booksScreenSettings.refresh(); extensionSetup.refresh() }
@@ -148,66 +154,89 @@ struct DictionarySettingsView: View {
             }
     }
 
-    private var general: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            DictionaryCard {
-                Toggle("Books 屏幕语境（本地识别）",isOn:Binding(
-                    get:{ booksScreenSettings.enabled }, set:{ booksScreenSettings.setEnabled($0) }))
-                    .accessibilityIdentifier("books-screen-context-enabled")
-                Text("Books 无法提供原句时，尝试识别当前窗口鼠标附近的文字。保持鼠标停在选词旁；位置不明确或页面变化时不使用。每次先核对原句，再决定是否交给查词服务。")
-                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
-                Text("图片仅在内存中用于本地识别，不保存或上传。需要 macOS 屏幕录制权限，未授权时保持普通查词。")
-                    .font(.system(size:12)).foregroundStyle(DictionaryStyle.secondary)
+    private var gettingStarted: some View {
+        GettingStartedView(service: serviceSettings, local: localSettings,
+            readiness: readiness, progress: progress, extensionSetup: extensionSetup,
+            booksScreenSettings: booksScreenSettings, readingRoute: $navigation.readingRoute,
+            onService: { navigation.section = .service }, onLocal: { navigation.section = .local },
+            onPermission: { navigation.section = .reading }, onExample: onExample,
+            onCopyExtensionToken: onCopyExtensionToken)
+    }
+
+    private var service: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            LookupServiceSettingsView(settings: serviceSettings, cloud: settings)
+            DisclosureGroup("Ollama 配置", isExpanded: Binding(get: { navigation.section == .local },
+                set: { navigation.section = $0 ? .local : .service })) { LocalModelSettingsView(settings: localSettings).padding(.top, 12) }
+            DisclosureGroup("DeepSeek 配置", isExpanded: Binding(get: { navigation.section == .cloud },
+                set: { navigation.section = $0 ? .cloud : .service })) { CloudSettingsView(settings: settings).padding(.top, 12) }
+            Divider()
+            SpeechSettingsView()
+        }
+    }
+
+    private var reading: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Label(readiness.permissionLabel, systemImage: readiness.permission == .granted ? "checkmark.circle" : "hand.raised")
+                Spacer()
+                Button("重新检查") { readiness.refresh() }.controlSize(.small)
+            }.font(.system(size: 13))
+            if readiness.permission != .granted {
+                Text("在系统设置中为当前 Dictionary 开启辅助功能，才能从其他 App 选词。未授权时仍可手动输入。")
+                Button("打开权限设置") { readiness.openSettings() }
+                if readiness.settingsOpenFailed { Text("系统设置 → 隐私与安全 → 辅助功能").font(.caption) }
+            }
+            Divider()
+            Toggle("Books 屏幕语境", isOn: Binding(get: { booksScreenSettings.enabled }, set: { booksScreenSettings.setEnabled($0) }))
+                .accessibilityIdentifier("books-screen-context-enabled")
+            Text("无法取得原句时，在本地识别 Books 选词附近的文字。图片不保存或上传。")
+                .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+            if booksScreenSettings.enabled {
                 HStack {
-                    Text(booksScreenSettings.permissionGranted ? "屏幕权限已开启" : "屏幕权限未开启").font(.system(size:12))
-                    Button("重新检查") { booksScreenSettings.refresh() }
-                    if booksScreenSettings.enabled && !booksScreenSettings.permissionGranted {
-                        Button("申请屏幕录制权限") { booksScreenSettings.requestPermission() }
-                    }
-                }
-            }.onAppear { booksScreenSettings.refresh() }
-            DictionaryCard {
-                HStack {
-                    Label(readiness.permissionLabel, systemImage: readiness.permission == .granted ? "checkmark.circle" : "hand.raised")
-                        .font(.system(size: 13, weight: .medium))
+                    Text(booksScreenSettings.permissionGranted ? "屏幕权限已开启" : "需要屏幕录制权限")
                     Spacer()
-                    Button("重新检查") { readiness.refresh() }
+                    Button("重新检查") { booksScreenSettings.refresh() }.controlSize(.small)
                 }
-                if readiness.permission != .granted {
-                    Text("在系统设置的隐私与安全中，为当前 Dictionary 开启选词权限。未授权时仍可手动输入查词。")
-                        .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Button("打开权限设置") { readiness.openSettings() }
-                        Button("定位当前 App") { readiness.reveal() }
-                    }
-                    if readiness.settingsOpenFailed {
-                        Text("请手动打开系统设置 → 隐私与安全 → 辅助功能（或设备控制和数据访问）。")
-                            .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-                    }
-                } else {
-                    Text("当前运行的 App 已获授权；其他应用能否提供语境仍取决于其支持情况。")
-                        .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                if !booksScreenSettings.permissionGranted {
+                    Button("申请屏幕录制权限") { booksScreenSettings.requestPermission() }
                 }
+                Toggle("可靠语境自动交给本地服务", isOn: Binding(get: { booksScreenSettings.automaticLocal }, set: { booksScreenSettings.setAutomaticLocal($0) }))
+                    .accessibilityIdentifier("screen-context-auto-local")
+                Toggle("可靠语境自动发送至所选云端服务", isOn: Binding(get: { booksScreenSettings.automaticCloud }, set: { booksScreenSettings.setAutomaticCloud($0) }))
+                    .accessibilityIdentifier("screen-context-auto-cloud")
+                Text("两项默认关闭。开启后，识别文字会直接交给对应服务，云端查询可能收费。检测到位置、页面或文字异常时仍需核对；自动筛选不保证识别准确。")
+                    .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
             }
-            DictionaryCard {
-                preference("外观", value: "跟随 macOS 系统")
-                Divider()
-                preference("翻译语言", value: "简体中文")
+            DisclosureGroup("使用与隐私说明") {
+                Text("按快捷键时让鼠标停在选词旁。只读取当前 Books 窗口的局部画面，不在后台持续捕获。可在查询前修改识别错字；无需原句时可仅查单词。授权不代表所有阅读 App 都支持语境。")
+                    .font(.system(size: 12)).padding(.top, 6)
             }
-            Text("阅读时查词").font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-            DictionaryCard {
-                preference("选词快捷键", value: "⌥ D")
-                Divider()
-                preference("手动提交", value: "⌘ Return")
+            Divider()
+            HStack {
+                Text("浏览器与其他阅读软件")
+                Spacer()
+                Button("接入指南") { navigation.section = .started }
             }
-            Text("选中英文后呼出弹窗，读懂后继续阅读。\n需要保留结果时，点击弹窗右上角的固定按钮。")
-                .font(.system(size: 12)).lineSpacing(5).foregroundStyle(DictionaryStyle.secondary)
-            DictionaryCard {
-                Text("当前版本").font(.system(size: 13, weight: .medium))
-                Text(readiness.buildLabel).font(.system(size: 11)).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("在 Finder 中显示当前 App") { readiness.reveal() }
-            }
+        }.font(.system(size: 13))
+    }
+
+    private var general: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            preference("选词与翻译", value: "⌥ D")
+            preference("手动提交", value: "⌘ Return")
+            preference("关闭浮窗", value: "Esc")
+            Text("选中单词查词，选中句段翻译；可在结果中切换。需要保留结果时点击固定。")
+                .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+            Divider()
+            preference("外观", value: "跟随 macOS 系统")
+            preference("当前翻译方向", value: "英语 → 简体中文")
+            Text("以上为当前支持范围。").font(.caption).foregroundStyle(DictionaryStyle.secondary)
+            Divider()
+            Text("当前版本").font(.system(size: 13, weight: .medium))
+            Text(readiness.buildLabel).font(.system(size: 11)).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("在 Finder 中显示当前 App") { readiness.reveal() }.font(.system(size: 12))
         }
     }
 

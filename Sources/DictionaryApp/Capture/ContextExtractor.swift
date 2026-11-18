@@ -9,6 +9,7 @@ struct CapturedContext {
     let containingSentence: String?
     var diagnostics = CaptureDetails()
     var capture: SelectionLocation? = nil
+    var screenContextCanAutoUse = false
 }
 
 final class ContextExtractor {

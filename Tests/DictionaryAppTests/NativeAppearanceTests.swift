@@ -294,6 +294,34 @@ struct NativeAppearanceTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DICTIONARY_UI_PREVIEWS"] != nil))
+    func revisedWordTranslationAndEditableReviewStayWithinPopup() async throws {
+        _ = await AmericanPronunciation.shared.lookup("company")
+        let sentence = "Later, the company repaired the bridge after the storm."
+        let word = try LookupRequest.captured(target: "company", context: sentence, sentence: sentence,
+            source: "Synthetic Books", capture: .init(reliability: .heuristic, method: .screenOCR))
+        let paragraph = "This is synthetic section 7. A small company checked the equipment. The report contained observations."
+        let text = try LookupRequest.manual(target: paragraph, context: "")
+        let answer = Translation(meaningInContext: "公司", literalGloss: nil, partOfSpeech: "noun",
+            exampleTranslation: "后来，公司在暴风雨后修好了桥。", alternatives: nil)
+        let phases: [(String, LookupPhase)] = [
+            ("revised-word", .finished(word, .success(.init(request: word, translation: answer)))),
+            ("revised-translation", .finished(text, .success(.init(request: text,
+                translation: Translation(textTranslation: .init(translatedText: "这是合成的第 7 节。一家小公司检查了设备。报告包含观察记录。")))))),
+            ("revised-review", .reviewingContext(word, id: UUID()))]
+        for (name, phase) in phases {
+            for scheme in [ColorScheme.light, .dark] {
+                let state = PopupState(); state.phase = phase
+                try await host(TranslationPopupView(state: state, onClose: {}, primaryLabel: "Ollama",
+                    onReviewContext: { _, _, _ in false }, onChangeTask: { _, _ in }).frame(width: 420, height: 560),
+                    size: NSSize(width: 420, height: 560), scheme: scheme,
+                    preview: name + (scheme == .light ? "-light" : "-dark")) { view in
+                    #expect(view.fittingSize.width <= 420 && view.fittingSize.height <= 560)
+                }
+            }
+        }
+    }
+
     private func host<V: View>(_ root: V, size: NSSize, scheme: ColorScheme = .light, preview: String? = nil,
                                check: (NSView) throws -> Void) async throws {
         _ = NSApplication.shared

@@ -21,7 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }, persist: { [weak self] in self?.preferences.set($0.path, forKey: BrowserExtensionSetup.preference) })
     private lazy var booksScreenSettings = BooksScreenSettings(
         enabled: preferences.bool(forKey: BooksScreenSettings.preference),
-        persist: { [weak self] in self?.preferences.set($0,forKey:BooksScreenSettings.preference) })
+        persist: { [weak self] in self?.preferences.set($0,forKey:BooksScreenSettings.preference) },
+        automaticLocal: preferences.bool(forKey: BooksScreenSettings.automaticLocalPreference),
+        automaticCloud: preferences.bool(forKey: BooksScreenSettings.automaticCloudPreference),
+        persistAutomaticLocal: { [weak self] in self?.preferences.set($0, forKey: BooksScreenSettings.automaticLocalPreference) },
+        persistAutomaticCloud: { [weak self] in self?.preferences.set($0, forKey: BooksScreenSettings.automaticCloudPreference) })
     private var configuredCloudProvider: TranslationProvider?
     private var appliedPrimaryConfiguration: String?
     private lazy var serviceSettings = LookupServiceSettings(
@@ -53,8 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var mainWindowController = MainWindowController(coordinator: coordinator, readiness: readiness,
         serviceSettings: serviceSettings, onSettings: { [weak self] in self?.openSettings() },
         onSetup: { [weak self] in self?.cloudSettingsWindow.open(section: .service) },
-        onGettingStarted: { [weak self] in self?.openGettingStarted() })
-    private lazy var captureController = SelectionCaptureController(coordinator: coordinator, diagnostics: diagnostics)
+        onGettingStarted: { [weak self] in self?.openGettingStarted() },
+        onPermissionSettings: { [weak self] in self?.cloudSettingsWindow.open(section: .reading) })
+    private lazy var captureController = SelectionCaptureController(coordinator: coordinator, diagnostics: diagnostics,
+        allowAutomaticScreenContext: { [weak self] in
+            guard let self else { return false }
+            return self.booksScreenSettings.automaticallyUsesContext(isCloud: self.coordinator.primaryIsCloud)
+        })
     private let targetLanguage = "简体中文"
     private let tokenStore: TokenStore
     private var httpServer: HTTPServer?
@@ -160,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             else if cloud { primary = KeychainDeepSeekProvider(store: cloudCredentialStore, purpose: .lookup) }
             else { primary = provider }
             coordinator.configurePrimaryProvider(primary,
-                label: managed ? "Claude" : cloud ? "DeepSeek" : "Ollama", isCloud: cloud)
+                label: managed ? "Claude" : cloud ? "DeepSeek" : "Ollama", isCloud: managed || cloud)
             appliedPrimaryConfiguration = identity
         }
         coordinator.configureCloudProvider(cloud ? nil : configuredCloudProvider)

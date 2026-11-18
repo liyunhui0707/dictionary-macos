@@ -23,104 +23,44 @@ struct GettingStartedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("完成第一次语境查词").font(.system(size: 18, weight: .medium))
-            Text("选择服务 → 主窗口查询 → 阅读软件选词。进度仅记录本次打开后的实际操作，不会自动查询或发送文字。")
-                .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-            Text(guidance.message).foregroundStyle(DictionaryStyle.accent)
-            if let action = guidance.action {
-                Button(action.label) { perform(action) }
-                    .accessibilityIdentifier("first-lookup-next-action")
+            Text("开始使用").font(.system(size: 18, weight: .semibold))
+            Text("选中英文，按 ⌥D。单词查看语境释义，句段查看完整译文。")
+                .font(.system(size: 13))
+            HStack {
+                Label(service.needsSetup ? "先配置翻译服务" : service.label,
+                      systemImage: service.needsSetup ? "exclamationmark.circle" : "checkmark.circle")
+                Spacer()
+                Button(service.needsSetup ? "设置服务" : "更改", action: onService)
             }
-            if progress.isComplete {
-                Label("本次首查自测已完成", systemImage: "checkmark.circle")
-                    .foregroundStyle(DictionaryStyle.accent).accessibilityIdentifier("first-lookup-complete")
-                Text("你已核对一项阅读场景。其他软件和文档仍需分别核对，AI 释义不保证每次正确。")
+            if service.selected == .local && !service.isManaged {
+                HStack {
+                    Text(local.statusMessage).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                    Spacer()
+                    Button("检查连接") { Task { await local.check() } }.disabled(local.isChecking)
+                }
+                if local.restartRequired { Text("模型已更改，正常重开 Dictionary 后生效。").font(.caption) }
             }
-            Picker("阅读准备", selection: $readingRoute) {
+            Divider()
+            Picker("阅读软件", selection: $readingRoute) {
                 ForEach(ReadingSetupRoute.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).accessibilityIdentifier("reading-setup-route")
-                .onChange(of: readingRoute) { _, _ in progress.resetReading() }
             if readingRoute == .browser {
-                HStack {
-                    Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
-                        .accessibilityIdentifier("prepare-browser-extension")
-                    Button("选择其他位置…", action: exportExtension)
-                        .accessibilityIdentifier("export-browser-extension")
-                    if extensionSetup.prepared != nil {
-                        Button("显示扩展文件夹", action: revealExtension)
-                    }
-                }
-                Text(extensionSetup.message).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
-                    .accessibilityIdentifier("browser-extension-preparation-status")
+                browserInstructions
             } else {
                 nativePreparationStatus
+                Text("选中正文中的单词、短语或句段，按 ⌥D。无法取得语境时仍可查看普通释义，或在主窗口补充原文。")
             }
-            DictionaryCard {
-                Text("1 · 选择查词服务").font(.system(size: 14, weight: .medium))
-                Text(service.needsSetup ? "尚未选择可用的查词方式。" : "当前：\(service.label)；实际查询仍需下面的自测。")
-                    .accessibilityIdentifier("first-lookup-service")
-                if service.needsSetup {
-                    Text("DeepSeek 需要自己的密钥、网络和用量额度；Ollama 将文字留在本机，需要另行安装服务和模型。")
-                }
-                Button(service.needsSetup ? "选择查词服务" : "更改查词服务", action: onService)
-                if service.selected == .local && !service.isManaged {
-                    Text("上次检查：\(local.statusMessage)").accessibilityIdentifier("first-lookup-local-status")
-                    HStack {
-                        Button("检查本地服务与模型") { Task { await local.check() } }.disabled(local.isChecking)
-                        Button("准备或更换模型", action: onLocal)
-                    }
-                    if local.restartRequired { Text("模型选择已更改，重新打开 Dictionary 后生效。") }
-                    if LocalModelConfiguration.matches(local.configuration.model, LocalModelConfiguration.defaultModel) {
-                        DisclosureGroup("默认本地模型有已知误译") {
-                            Text("部分搭配和语法词仍可能误译。请核对词义；质量优先时可自行选择 DeepSeek，云端会发送语境并产生费用。")
-                                .foregroundStyle(DictionaryStyle.secondary).padding(.top, 6)
-                        }
-                    }
-                }
+            Divider()
+            DisclosureGroup("试用合成样例 · 可选") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button("在主窗口准备样例", action: onExample).accessibilityIdentifier("prepare-lookup-example")
+                    Text("仅填入样例，不自动提交或覆盖已有输入。")
+                    Link("打开浏览器样例", destination: FirstLookupProgress.readingSampleURL)
+                }.font(.system(size: 12)).padding(.top, 8)
             }
-            DictionaryCard {
-                Text("2 · 在主窗口完成一次语境查询").font(.system(size: 14, weight: .medium))
-                Text(checkMessage(progress.manual)).accessibilityIdentifier("first-lookup-manual-status")
-                Button("在主窗口准备样例", action: onExample).accessibilityIdentifier("prepare-lookup-example")
-                Text("只填入 bank 与河流句子，不自动提交或覆盖已有输入。点击“查词”后，应得到“河岸”；请自行核对。云端查询按服务商用量计费。")
-                if progress.manual == .failed {
-                    Button("检查查词服务", action: onService)
-                } else if progress.manual == .noMeaning {
-                    Button("更换模型或查词服务", action: service.selected == .local ? onLocal : onService)
-                }
-            }
-            DictionaryCard {
-                Text("3 · 在阅读软件核对选词和原句").font(.system(size: 14, weight: .medium))
-                Text(progress.readingConfirmed ? "已由你确认本次选词、原句和词义对应。" : checkMessage(progress.reading))
-                    .accessibilityIdentifier("first-lookup-reading-status")
-                if readingRoute == .browser {
-                    browserInstructions
-                    Link("打开浏览器查词样例", destination: FirstLookupProgress.readingSampleURL)
-                    Text("样例由正在运行的 Dictionary 提供，只展示合成句子，打开时不会查询。")
-                        .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
-                } else {
-                    Text(readingRoute == .books ? "Books" : "Readest、Markdown、TextEdit 等")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("选中正文英文，按 ⌥D。语境是否可读取还取决于软件和文档。")
-                    if readingRoute == .books {
-                        Text("优先读取 Books 提供的原句；无法定位时，可在“通用”自行开启屏幕语境并授权。保持鼠标在选词旁，先核对屏幕预览，再确认查询；位置不明确或跨页时仍可能缺少原句。")
-                    }
-                }
-                Text("主窗口查询成功不代表阅读软件已接通。浮窗里的选词、原句和词义都对应时，再确认；网页内的说明不算查词结果。")
-                HStack {
-                    Button("我已核对，原句和词义正确") { progress.confirmReading() }
-                        .disabled(!progress.canConfirmReading).accessibilityIdentifier("confirm-first-reading")
-                    if progress.reading == .responseReceived {
-                        Button("原句或词义不符") { progress.rejectReading() }
-                    }
-                }
-            }
-            DictionaryCard {
-                Text("遇到问题时").font(.system(size: 14, weight: .medium))
-                Text("无弹窗：检查实际快捷键、扩展配对及站点是否允许扩展。\n有弹窗但查询失败：检查查词服务、模型或云端额度。\n单词正确但原句缺失：补充原句或换一段正文；不要反复重置权限。")
-                Link("安装、升级与回退指南", destination: URL(string: "https://github.com/liyunhui0707/dictionary-macos/blob/main/docs/guide.md")!)
-            }
-        }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            Text("AI 结果可能有误。遇到问题可到“帮助”查看诊断或反馈，无需重复完成样例。")
+                .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+        }.font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
     }
 
     private var nativePreparationStatus: some View {
@@ -128,49 +68,34 @@ struct GettingStartedView: View {
             Text(readiness.permissionLabel).accessibilityIdentifier("reading-selection-permission")
             if readingRoute == .books {
                 Text(!booksScreenSettings.enabled ? "Books 屏幕语境未开启，当前只使用普通选词路径。" :
-                    booksScreenSettings.permissionGranted ? "Books 屏幕语境已开启，每次识别后仍需你核对原句。" :
+                    booksScreenSettings.permissionGranted ? "Books 屏幕语境已开启；自动使用策略可在阅读与权限中调整。" :
                     "Books 屏幕语境已开启，但屏幕录制权限尚未开启。")
                     .accessibilityIdentifier("books-preparation-status")
                 Button("查看选词与 Books 屏幕语境设置", action: onPermission)
             } else {
                 Button("查看选词权限", action: onPermission)
             }
-            Text("权限开启不代表所有软件都能提供原句。先在你使用的正文中完成一次核对。")
+            Text("权限开启后，语境是否可读取仍取决于阅读软件与文档。")
                 .font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary)
         }
     }
 
-    private var guidance: FirstLookupGuidance {
-        FirstLookupGuidance.resolve(.init(needsService: service.needsSetup, local: service.selected == .local,
-            restartRequired: local.restartRequired, status: local.status, checking: local.isChecking,
-            checkedAt: local.checkedAt, responseAt: progress.lastResponseAt,
-            manual: progress.manual, reading: progress.reading, complete: progress.isComplete,
-            route: readingRoute, extensionPrepared: extensionSetup.prepared != nil, permission: readiness.permission,
-            booksScreenEnabled: booksScreenSettings.enabled, screenPermission: booksScreenSettings.permissionGranted))
-    }
-
-    private func perform(_ action: FirstLookupGuidance.Action) {
-        switch action {
-        case .service: onService()
-        case .checkLocal: Task { await local.check() }
-        case .localModel: onLocal()
-        case .example: onExample()
-        case .permissions: onPermission()
-        case .prepareExtension: extensionSetup.prepare(); pathCopied = false
-        case .browserSample: NSWorkspace.shared.open(FirstLookupProgress.readingSampleURL)
-        }
-    }
-
     private var browserInstructions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("浏览器 · Chrome / Edge / Brave").font(.system(size: 13, weight: .medium))
-            Text("配套扩展文件按版本独立保存。重新打开会核对文件；文件已准备不代表浏览器已连接或查询已通过。")
-            if let prepared = extensionSetup.prepared {
-                Text(prepared.directory.path).font(.system(size: 11)).textSelection(.enabled)
-                    .accessibilityIdentifier("prepared-browser-extension-path")
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Chrome / Edge / Brave").font(.system(size: 13, weight: .medium))
+            HStack {
+                Button("准备浏览器扩展") { extensionSetup.prepare(); pathCopied = false }
+                    .accessibilityIdentifier("prepare-browser-extension")
+                Menu("更多") { Button("选择其他位置…", action: exportExtension) }
+                    .menuStyle(.borderlessButton).fixedSize()
+            }
+            Text(extensionSetup.message).font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+                .accessibilityIdentifier("browser-extension-preparation-status")
+            if extensionSetup.prepared != nil {
+                Text("1. 在浏览器扩展管理页开启开发者模式，加载这个文件夹。")
                 HStack {
                     Button("显示文件夹", action: revealExtension)
-                    Button(pathCopied ? "已复制文件夹路径" : "复制文件夹路径") {
+                    Button(pathCopied ? "已复制路径" : "复制路径") {
                         extensionSetup.refresh()
                         if let current = extensionSetup.prepared {
                             NSPasteboard.general.clearContents()
@@ -178,32 +103,17 @@ struct GettingStartedView: View {
                         }
                     }.accessibilityIdentifier("copy-browser-extension-path")
                 }
+                Text("2. 打开 Dictionary Lookup，粘贴配对令牌并验证保存。")
+                Button("复制配对令牌") { tokenCopied = onCopyExtensionToken() }
+                    .accessibilityIdentifier("copy-extension-pairing-token")
+                if let tokenCopied { Text(tokenCopied ? "已复制，请亲自粘贴到扩展。" : "未能复制，请重试。") }
+                Text("3. 在浏览器扩展快捷方式中设置 ⌥D，确认扩展显示已连接。")
             }
-            Text("先点上方“准备浏览器扩展”。在浏览器扩展管理页开启开发者模式，选择“加载已解压的扩展”。可在文件选择窗口按 ⇧⌘G，粘贴上方复制的文件夹路径并打开。只加载显示的配套版本，旧目录保留以便回退。")
-            Text("只启用一个 Dictionary Lookup，并只运行一个 Dictionary。复制配对令牌后，亲自粘贴到扩展并验证保存。不要分享令牌。")
-            Button("复制配对令牌") { tokenCopied = onCopyExtensionToken() }
-                .accessibilityIdentifier("copy-extension-pairing-token")
-            if let tokenCopied {
-                Text(tokenCopied ? "已复制。请到浏览器的 Dictionary Lookup 扩展中粘贴并验证保存；复制成功不代表已连接。" :
-                    "未能复制配对令牌，请重试。")
-                    .accessibilityIdentifier("extension-pairing-copy-status")
+            DisclosureGroup("安装与隐私说明") {
+                Text("扩展需手动加载和配对，浏览器限制使应用无法代装。文件夹路径可在浏览器的选择窗口中按 ⇧⌘G 后粘贴。只启用一个 Dictionary Lookup，并只运行一个 Dictionary；不要分享令牌。浏览器扩展不需要系统选词权限，部分站点会限制扩展。更新 App 后需手动更新已加载扩展，旧目录可保留用于回退。")
+                    .padding(.top, 6)
             }
-            Text("扩展面板应显示“已连接”和实际快捷键；未绑定时，在浏览器的扩展键盘快捷方式中设置 ⌥D。")
-            Text("浏览器扩展查词不要求系统选词权限。若此站点禁止扩展，在浏览器扩展菜单确认站点设置。App 更新不会自动更新已加载的扩展。")
-        }
-    }
-
-    private func checkMessage(_ check: FirstLookupProgress.Check) -> String {
-        switch check {
-        case .notStarted: "尚未完成实际查询。"
-        case .querying: "正在查询，等待服务响应…"
-        case .responseReceived: "已收到包含原句的释义。仍需核对原句与词义，服务响应不代表 AI 判断正确。"
-        case .needsContext: "尚未取得对应原句。请补充完整语境，或在可读取的正文中重新选词；若结果不对应，请勿确认完成。"
-        case .needsReview: "尚未通过你的核对。原句不符时重新选词或补充语境；原句正确但词义错误时，可更换查词服务，不要因此重置选词权限。"
-        case .noMeaning: "模型已响应，但没有可用释义。请核对输入或更换模型／服务；无需调整选词权限。"
-        case .failed: "本次查询未完成。请查看查询结果中的错误，检查连接、模型或云端额度后重试。"
-        case .cancelled: "本次查询已取消，可以重新准备样例或选词。"
-        }
+        }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
     }
 
     private func revealExtension() {

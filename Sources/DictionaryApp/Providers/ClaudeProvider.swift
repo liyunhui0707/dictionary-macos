@@ -10,17 +10,27 @@ final class ClaudeProvider: TranslationProvider {
         self.model = model
     }
 
-    func translate(
+    func translateText(_ text: String, targetLanguage: String) async throws -> TextTranslation {
+        let result = try await perform(target: text, context: "", containingSentence: nil, targetLanguage: targetLanguage, textTask: true)
+        guard let translated = result.textTranslation else { throw TranslationError.emptyResponse }
+        return translated
+    }
+
+    func translate(target: String, context: String, containingSentence: String?, targetLanguage: String) async throws -> Translation {
+        try await perform(target: target, context: context, containingSentence: containingSentence, targetLanguage: targetLanguage, textTask: false)
+    }
+
+    private func perform(
         target: String,
         context: String,
         containingSentence: String?,
-        targetLanguage: String
+        targetLanguage: String, textTask: Bool
     ) async throws -> Translation {
         guard !apiKey.isEmpty else {
             throw TranslationError.missingAPIKey(provider: "Anthropic")
         }
 
-        let prompt = PromptBuilder.build(
+        let prompt = textTask ? TextTranslationPrompt.build(text: target, language: targetLanguage) : PromptBuilder.build(
             target: target,
             context: context,
             containingSentence: containingSentence,
@@ -37,7 +47,7 @@ final class ClaudeProvider: TranslationProvider {
         // same paragraph hit the prompt cache.
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 1024,
+            "max_tokens": textTask ? 4096 : 1024,
             "system": prompt.system,
             "messages": [
                 [
@@ -70,6 +80,7 @@ final class ClaudeProvider: TranslationProvider {
             throw TranslationError.emptyResponse
         }
 
+        if textTask { return Translation(textTranslation: try TextTranslation.decode(text)) }
         let cleaned = JSONExtractor.extract(text)
         guard let jsonData = cleaned.data(using: .utf8) else {
             throw TranslationError.unparseableJSON(rawOutput: text)

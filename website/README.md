@@ -7,6 +7,10 @@ without simulated popups, scripts or model calls. Actual lookups are initiated t
 Download and update links point to the public repository's Releases page. Do not
 add an installation download or version claim until the matching artifact is published.
 
+Before the Sites source helper commits, set the checkout-local public Git identity
+explicitly; do not inherit a machine-wide email. Deployment archives contain only
+the static output and hosting manifest, never Git history or local evidence.
+
 The tab favicon reuses the native `Sources/DictionaryApp/Resources/AppIcon.icns`
 artwork: `dist/favicon.ico` contains 16, 32 and 64 pixel frames, with an explicit
 32 pixel PNG alternative. Keep these assets aligned when the app logo changes.

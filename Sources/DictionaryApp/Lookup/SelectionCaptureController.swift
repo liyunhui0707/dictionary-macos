@@ -11,12 +11,15 @@ final class SelectionCaptureController {
     }
     private let coordinator: LookupCoordinator
     private let diagnostics: QADiagnostics?
+    private let allowAutomaticScreenContext: () -> Bool
     private var pending: Attempt?
     private(set) var task: Task<Void, Never>?
 
-    init(coordinator: LookupCoordinator, diagnostics: QADiagnostics? = nil) {
+    init(coordinator: LookupCoordinator, diagnostics: QADiagnostics? = nil,
+         allowAutomaticScreenContext: @escaping () -> Bool = { false }) {
         self.coordinator = coordinator
         self.diagnostics = diagnostics
+        self.allowAutomaticScreenContext = allowAutomaticScreenContext
         diagnostics?.observe(coordinator)
     }
 
@@ -38,7 +41,7 @@ final class SelectionCaptureController {
             }
             guard attempt.isSourceCurrent() else {
                 diagnostics?.record(QAEvent(kind: .sourceChanged, attemptID: attempt.id))
-                coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.", issue: .sourceChanged)
+                coordinator.failCapture(attempt.id, message: "来源窗口已变化，请重新选中文字后再试。", issue: .sourceChanged)
                 continue
             }
             let started = ProcessInfo.processInfo.systemUptime
@@ -51,18 +54,22 @@ final class SelectionCaptureController {
                 }
                 guard attempt.isSourceCurrent() else {
                     diagnostics?.record(QAEvent(kind: .sourceChanged, attemptID: attempt.id))
-                    coordinator.failCapture(attempt.id, message: "The source app changed. Select the text and try again.", issue: .sourceChanged)
+                    coordinator.failCapture(attempt.id, message: "来源窗口已变化，请重新选中文字后再试。", issue: .sourceChanged)
                     continue
                 }
                 var captureDetails = captured.diagnostics
+                let automatic = allowAutomaticScreenContext() && captured.screenContextCanAutoUse
+                if automatic, captured.capture?.method == .screenOCR { captureDetails.screenContext = .automaticallyUsed }
                 captureDetails.includeQuality(captured.capture)
                 diagnostics?.record(QAEvent(kind: .captureSucceeded, attemptID: attempt.id, details: captureDetails,
                                             targetLength: captured.target.utf16.count, contextLength: captured.context.utf16.count,
                                             sentenceLength: captured.containingSentence?.utf16.count,
                                             elapsedMilliseconds: Int((ProcessInfo.processInfo.systemUptime - started) * 1000)))
-                let request = try LookupRequest.captured(target: captured.target, context: captured.context,
+                let base = try LookupRequest.captured(target: captured.target, context: captured.context,
                                                          sentence: captured.containingSentence, source: attempt.source, capture: captured.capture)
-                coordinator.finishCapture(attempt.id, request: request)
+                let request = LookupRequest(target: base.target, context: base.context, containingSentence: base.containingSentence,
+                    source: base.source, capture: base.capture, screenContextCanAutoUse: captured.screenContextCanAutoUse)
+                coordinator.finishCapture(attempt.id, request: request, allowAutomaticScreenContext: automatic)
             } catch {
                 guard coordinator.isCurrentCapture(attempt.id) else {
                     diagnostics?.record(QAEvent(kind: .staleCaptureDiscarded, attemptID: attempt.id)); continue

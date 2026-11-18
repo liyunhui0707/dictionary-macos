@@ -8,13 +8,18 @@ final class PopupState: ObservableObject {
     @Published var isPinned: Bool = false
     @Published var availableSize = CGSize(width: 420, height: 560)
     @Published var contentHeight: CGFloat = 1
-    @Published var cloudControlsHeight: CGFloat = 1
 }
 
 /// Lets the user drag the window by clicking anywhere on the background.
 /// SwiftUI controls (buttons, text views) consume their hit-tests first, so
 /// this `mouseDown` only fires for clicks that fall through to the panel.
-private final class DraggablePanel: NSPanel {
+final class DraggablePanel: NSPanel {
+    // Borderless panels otherwise reject keyboard focus, leaving the review
+    // TextEditor visible but unable to accept input. Presenting stays nonactivating;
+    // becomesKeyOnlyIfNeeded lets an explicit editor click receive the keyboard.
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
     override func mouseDown(with event: NSEvent) {
         self.performDrag(with: event)
     }
@@ -183,7 +188,9 @@ private struct CoordinatorPopupView: View {
     var body: some View {
         TranslationPopupView(state: state, onClose: onClose, cloud: coordinator.selectionCloud,
             primaryLabel: coordinator.primaryLabel, primaryIsCloud: coordinator.primaryIsCloud,
-            onConfirmScreenContext: { coordinator.confirmScreenContext($0) })
+            onConfirmScreenContext: { coordinator.confirmScreenContext($0) },
+            onReviewContext: { coordinator.confirmScreenContext($0, editedContext: $1, useContext: $2) },
+            onChangeTask: { coordinator.submit($0.withTask($1), to: .selection) })
     }
 }
 

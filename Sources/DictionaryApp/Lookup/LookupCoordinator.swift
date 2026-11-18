@@ -115,8 +115,7 @@ final class LookupCoordinator: ObservableObject {
             var supportIssue: SupportIssue?
             do {
                 try Task.checkCancellation()
-                let translation = try await provider.translate(target: request.target, context: request.providerContext,
-                                                               containingSentence: request.containingSentence, targetLanguage: language)
+                let translation = try await provider.translate(request, targetLanguage: language)
                 outcome = .success(LookupResult(request: request, translation: translation))
             } catch {
                 supportIssue = SupportIssue.classify(error)
@@ -175,9 +174,9 @@ final class LookupCoordinator: ObservableObject {
 
     func isCurrentCapture(_ intent: UUID) -> Bool { selectionIntent == intent }
 
-    func finishCapture(_ intent: UUID, request: LookupRequest) {
+    func finishCapture(_ intent: UUID, request: LookupRequest, allowAutomaticScreenContext: Bool = false) {
         guard isCurrentCapture(intent) else { return }
-        if request.capture?.method == .screenOCR {
+        if request.capture?.method == .screenOCR && !(allowAutomaticScreenContext && request.screenContextCanAutoUse) {
             selection = .reviewingContext(request, id: intent)
             return
         }
@@ -186,9 +185,25 @@ final class LookupCoordinator: ObservableObject {
     }
 
     func confirmScreenContext(_ id: UUID) {
+        _ = confirmScreenContext(id, editedContext: nil)
+    }
+
+    @discardableResult
+    func confirmScreenContext(_ id: UUID, editedContext: String?, useContext: Bool = true) -> Bool {
         guard selectionIntent == id, case .reviewingContext(let request, let current) = selection,
-              current == id, request.capture?.method == .screenOCR else { return }
-        start(request, to: .selection)
+              current == id, request.capture?.method == .screenOCR else { return false }
+        var submitted = request
+        if !useContext {
+            submitted = LookupRequest(target: request.target, context: nil, containingSentence: nil, source: request.source,
+                capture: .init(reliability: .targetOnly, method: .clipboard), task: request.task)
+        } else if let editedContext {
+            guard ScreenContextSafety.validEdit(editedContext, target: request.target) else { return false }
+            let context = SelectionLocation.trim(editedContext)
+            submitted = LookupRequest(target: request.target, context: context, containingSentence: context, source: request.source,
+                capture: .init(reliability: .heuristic, method: .screenOCR), task: request.task)
+        }
+        start(submitted, to: .selection)
+        return true
     }
 
     func failCapture(_ intent: UUID, message: String, issue: SupportIssue = .captureUnavailable) {

@@ -5,6 +5,18 @@ import Testing
 
 @MainActor
 struct BooksCaptureConfirmationTests {
+    @Test func multilineSelectionCanTranslateWhenNativeAndClipboardAgreeAcrossStableSnapshots() async throws {
+        let selected = "The company checked the equipment.\nThe report contained observations."
+        let report = nativeSnapshot(selected, text: "Before. " + selected + " After.")
+        let pipeline = NativeCapturePipeline(isTrusted: { true }, safari: { nil }, ax: { report }, clipboard: {
+            ClipboardCapture(text: selected, failure: nil)
+        })
+        let captured = try await pipeline.capture(isSafari: false, isBooks: true)
+        #expect(captured.target == selected)
+        #expect(captured.capture?.reliability == .targetOnly)
+        #expect(LookupTask.inferred(from: captured.target) == .translation)
+    }
+
     @Test func copiedWordRecoversUniqueContextDespiteWrongNativeOffset() async throws {
         let page = "Earlier. Students learn from the class. It is hard, so we return to the lab. Later."
         for (visible, wrong) in [("from", "so"), ("Students", "to the"), ("class", "hard")] {

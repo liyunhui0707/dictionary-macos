@@ -9,6 +9,7 @@ struct MainWindowView: View {
     @ObservedObject var readiness: AppReadiness = .preview()
     @ObservedObject var serviceSettings: LookupServiceSettings = .preview()
     var onSetup: () -> Void = {}
+    var onPermissionSettings: (() -> Void)? = nil
     @StateObject private var presentation = MainWindowPresentation()
 
     private var isHome: Bool { if case .idle = coordinator.manual { return true }; return false }
@@ -17,7 +18,7 @@ struct MainWindowView: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 26) {
                 HStack(spacing: 10) { DictionaryMark(); Text("Dictionary").font(.system(size: 15, weight: .semibold)) }
-                Label("查词", systemImage: "magnifyingglass")
+                Label("查词与翻译", systemImage: "magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
                     .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                     .foregroundStyle(DictionaryStyle.accent)
@@ -31,7 +32,7 @@ struct MainWindowView: View {
                         .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
                 }.buttonStyle(.plain).foregroundStyle(DictionaryStyle.secondary).padding(.horizontal, 10)
                 if readiness.permission != .granted {
-                    Button(action: onSettings) {
+                    Button(action: onPermissionSettings ?? onSettings) {
                         Label(readiness.permissionLabel, systemImage: "hand.raised")
                             .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
                     }.buttonStyle(.plain).foregroundStyle(DictionaryStyle.secondary)
@@ -41,14 +42,14 @@ struct MainWindowView: View {
                 Button(action: onSettings) { Label("偏好设置", systemImage: "slider.horizontal.3") }
                     .buttonStyle(.plain).font(.system(size: 13)).padding(10)
                     .accessibilityIdentifier("open-settings")
-                Text("选词查词   ⌥ D").font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary).padding(.horizontal, 10)
+                Text("选词／翻译   ⌥ D").font(.system(size: 11)).foregroundStyle(DictionaryStyle.secondary).padding(.horizontal, 10)
             }
             .padding(18).frame(width: 185).frame(maxHeight: .infinity)
             .background(DictionaryStyle.surface)
             Rectangle().fill(DictionaryStyle.line).frame(width: 1)
             VStack(spacing: 0) {
                 HStack {
-                    Text(isHome ? "查词" : "词语释义")
+                    Text(isHome ? "查词与翻译" : "查询结果")
                     Spacer()
                     if coordinator.manual.isLoading {
                         Button("取消") { state.cancel() }
@@ -64,9 +65,9 @@ struct MainWindowView: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("WORDS, IN CONTEXT.").font(.system(size: 10, weight: .semibold))
                                     .tracking(2).foregroundStyle(DictionaryStyle.accent)
-                                Text("读懂一个词，也读懂此刻。")
+                                Text("读懂英文，继续阅读。")
                                     .font(.system(size: 27, weight: .medium)).fixedSize(horizontal: false, vertical: true)
-                                Text("从一句话开始，找到词语在其中的含义。")
+                                Text("输入单词查看释义，输入句段查看完整译文。")
                                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
                             }.padding(.top, 30)
                         }
@@ -76,7 +77,7 @@ struct MainWindowView: View {
                                 Text("选择 DeepSeek 云端查词，或使用本机 Ollama。")
                                     .font(.system(size: 13)).foregroundStyle(DictionaryStyle.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Button("开始设置与首查", action: onGettingStarted).buttonStyle(.borderedProminent)
+                                Button("设置服务", action: onSetup).buttonStyle(.borderedProminent)
                                     .accessibilityIdentifier("setup-lookup-service")
                             }
                         } else {
@@ -86,15 +87,16 @@ struct MainWindowView: View {
                             Divider()
                             LookupResultView(phase: coordinator.manual, cloud: coordinator.manualCloud,
                                 showsCloudControls: !coordinator.primaryIsCloud, primaryLabel: coordinator.primaryLabel,
-                                showsAdditionalMeanings: !coordinator.primaryIsCloud)
+                                showsAdditionalMeanings: !coordinator.primaryIsCloud,
+                                onChangeTask: { request, task in state.mode = task == .dictionary ? .dictionary : .translation; coordinator.submit(request.withTask(task), to: .manual) })
                             if case .finished(_, .failure) = coordinator.manual {
                                 Button("打开查词服务设置", action: onSetup).font(.system(size: 12))
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 12) {
                                 Divider()
-                                Label("阅读时选中英文单词，按 ⌥D 即可查词。", systemImage: "text.cursor")
-                                Text("也可以输入短语或句子，按 ⌘Return 提交。")
+                                Label("选中英文，按 ⌥D 查词或翻译。", systemImage: "text.cursor")
+                                Text("也可以直接输入句段，按 ⌘Return 提交。")
                             }.font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary).padding(.top, 18)
                         }
                     }
@@ -122,11 +124,15 @@ struct MainWindowView: View {
                                  placeholder: "输入英文单词、短语或句子", centersFirstLine: true,
                                  onSubmit: { state.submit() })
                     .frame(height: 46)
-                Button("查词") { state.submit() }.disabled(!state.canSubmit)
+                Button(state.effectiveTask.label) { state.submit() }.disabled(!state.canSubmit)
                     .buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(.horizontal, 12).padding(.vertical, 4)
                 .background(DictionaryStyle.surface, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DictionaryStyle.line))
+            Picker("处理方式", selection: $state.mode) {
+                ForEach(LookupMode.allCases, id: \.self) { Text($0.label).tag($0) }
+            }.pickerStyle(.segmented).frame(width: 210).accessibilityIdentifier("lookup-mode")
+            if state.effectiveTask == .dictionary {
             DisclosureGroup("添加语境 · 可选", isExpanded: $presentation.contextExpanded) {
                 LookupTextEditor(text: $state.context, label: "包含这个词的英文语境",
                                  placeholder: "粘贴包含这个词的英文句子…", onSubmit: { state.submit() })
@@ -135,6 +141,7 @@ struct MainWindowView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DictionaryStyle.line))
                     .padding(.top, 8)
             }.font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
+            }
             if let message = state.validationMessage {
                 Text(message).font(.system(size: 12)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
