@@ -12,8 +12,8 @@ function fixture(mode = 'success') {
   for (const dir of ['scripts', 'tools', 'bin']) fs.mkdirSync(path.join(root, dir));
   fs.copyFileSync(path.resolve(__dirname, '../../scripts/build-app.sh'), path.join(root, 'scripts/build-app.sh'));
   fs.copyFileSync(path.resolve(__dirname, '../../VERSION'), path.join(root, 'VERSION'));
-  fs.writeFileSync(path.join(root, 'bin/DictionaryApp'), 'candidate-binary', {mode: 0o755});
-  const resource = path.join(root, 'bin/DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary');
+  fs.writeFileSync(path.join(root, 'bin/Wordlit'), 'candidate-binary', {mode: 0o755});
+  const resource = path.join(root, 'bin/Wordlit_DictionaryApp.bundle/Contents/Resources/EnglishDictionary');
   if (mode !== 'missing-resource') {
     fs.mkdirSync(resource, {recursive: true});
     fs.writeFileSync(path.join(resource, 'oewn-2025.json.gz'), 'synthetic-resource');
@@ -39,9 +39,9 @@ if (path.basename(process.argv[1]) === 'codesign') {
   fs.writeFileSync('compile-started-' + (process.env.TEST_JOB || 'one'), 'started');
   if (mode === 'compile-failure') process.exit(41);
   if (mode === 'race') {
-    fs.mkdirSync('build/Dictionary.app/Contents/MacOS', {recursive: true});
-    fs.writeFileSync('build/Dictionary.app/Contents/MacOS/DictionaryApp', 'original-executable');
-    fs.writeFileSync('build/Dictionary.app/Contents/Info.plist', 'original-plist');
+    fs.mkdirSync('build/Wordlit.app/Contents/MacOS', {recursive: true});
+    fs.writeFileSync('build/Wordlit.app/Contents/MacOS/DictionaryApp', 'original-executable');
+    fs.writeFileSync('build/Wordlit.app/Contents/Info.plist', 'original-plist');
   }
   if (mode === 'concurrent') {
     const deadline = Date.now() + 5000;
@@ -55,7 +55,7 @@ if (path.basename(process.argv[1]) === 'codesign') {
 }
 `;
   for (const name of ['xcrun', 'codesign']) fs.writeFileSync(path.join(root, 'tools', name), tool, {mode: 0o755});
-  return {root, app: path.join(root, 'build/Dictionary.app'),
+  return {root, app: path.join(root, 'build/Wordlit.app'),
     env: {...process.env, PATH: `${path.join(root, 'tools')}:${process.env.PATH}`, TEST_BUILD_MODE: mode}};
 }
 
@@ -130,7 +130,7 @@ test('signature verification failure is not reported as a successful legacy buil
 
 test('legacy success requires signing and verification and retains bundle identity/version', () => {
   const f = fixture(); const r = run(f);
-  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Built: build\/Dictionary.app/);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Built: build\/Wordlit.app/);
   const calls = fs.readFileSync(path.join(f.root, 'signing-calls'), 'utf8').trim().split('\n').map(JSON.parse);
   assert(calls.some(a => a.includes('--sign')));
   assert(calls.some(a => a.includes('--verify') && a.includes('--strict')));
@@ -139,16 +139,16 @@ test('legacy success requires signing and verification and retains bundle identi
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');
   assert.match(plist, /com\.liyunhui\.DictionaryApp/);
   assert(plist.includes('<string>'+fs.readFileSync(path.join(f.root,'VERSION'),'utf8').trim()+'</string>'));
-  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-resource');
+  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/Wordlit_DictionaryApp.bundle/Contents/Resources/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-resource');
 });
 
 test('QA packaging carries dictionary resources with the executable', async () => {
   const {packageApp} = await import('../../scripts/qa-app.mjs');
   const f = fixture(); fs.mkdirSync(path.dirname(f.app), {recursive: true});
-  packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => '');
+  packageApp(path.dirname(f.app), path.join(f.root, 'bin/Wordlit'), {}, () => '');
   assert.match(fs.readFileSync(path.join(f.app, 'Contents/Info.plist'), 'utf8'), /CFBundleIconFile/);
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');
-  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-resource');
+  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/Wordlit_DictionaryApp.bundle/Contents/Resources/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-resource');
 });
 
 test('QA packaging refuses missing dictionary resources before signing', async () => {
@@ -166,7 +166,7 @@ test('legacy packaging refuses missing dictionary resources before signing', () 
 test('QA packaging accepts native SwiftPM flat resource bundles too', async () => {
   const {packageApp} = await import('../../scripts/qa-app.mjs');
   const f = fixture('missing-resource'); fs.mkdirSync(path.dirname(f.app), {recursive: true});
-  const directory = path.join(f.root, 'bin/DictionaryApp_DictionaryApp.bundle/EnglishDictionary');
+  const directory = path.join(f.root, 'bin/Wordlit_DictionaryApp.bundle/EnglishDictionary');
   fs.mkdirSync(directory, {recursive: true});
   fs.writeFileSync(path.join(directory, 'oewn-2025.json.gz'), 'synthetic-flat-resource');
   fs.writeFileSync(path.join(directory, '../AppIcon.icns'), 'synthetic-icon');
@@ -175,17 +175,17 @@ test('QA packaging accepts native SwiftPM flat resource bundles too', async () =
   const files={'cmudict.dict':'bank B AE1 NG K','LICENSE':'synthetic license'}; const provenance={files:{}};
   for(const [name,text] of Object.entries(files)) { fs.writeFileSync(path.join(pronunciation,name),text); provenance.files[name]={sha256:require('node:crypto').createHash('sha256').update(text).digest('hex')}; }
   fs.writeFileSync(path.join(pronunciation,'provenance.json'),JSON.stringify(provenance));
-  packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => '');
+  packageApp(path.dirname(f.app), path.join(f.root, 'bin/Wordlit'), {}, () => '');
   assert.match(fs.readFileSync(path.join(f.app, 'Contents/Info.plist'), 'utf8'), /CFBundleIconFile/);
   assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/AppIcon.icns'), 'utf8'), 'synthetic-icon');
-  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/DictionaryApp_DictionaryApp.bundle/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-flat-resource');
+  assert.equal(fs.readFileSync(path.join(f.app, 'Contents/Resources/Wordlit_DictionaryApp.bundle/EnglishDictionary/oewn-2025.json.gz'), 'utf8'), 'synthetic-flat-resource');
 });
 
 test('QA packaging also refuses an existing App without touching any contents', async () => {
   const {packageApp} = await import('../../scripts/qa-app.mjs');
   const f = fixture(); fs.mkdirSync(f.app, {recursive:true});
   fs.writeFileSync(path.join(f.app, 'sentinel'), 'preserve');
-  assert.throws(() => packageApp(path.dirname(f.app), path.join(f.root, 'bin/DictionaryApp'), {}, () => assert.fail('must not sign')), /EEXIST/);
+  assert.throws(() => packageApp(path.dirname(f.app), path.join(f.root, 'bin/Wordlit'), {}, () => assert.fail('must not sign')), /EEXIST/);
   assert.equal(fs.readFileSync(path.join(f.app, 'sentinel'), 'utf8'), 'preserve');
   assert.deepEqual(fs.readdirSync(f.app), ['sentinel']);
 });
@@ -194,7 +194,7 @@ test('QA packaging also refuses an existing App without touching any contents', 
 test('QA packaging requires the bundled reading sample before signing', async () => {
   const {packageApp} = await import('../../scripts/qa-app.mjs');
   const f = fixture(); fs.mkdirSync(path.dirname(f.app), {recursive:true});
-  const sample=path.join(f.root,'bin/DictionaryApp_DictionaryApp.bundle/Contents/Resources/ReadingSample.html');
+  const sample=path.join(f.root,'bin/Wordlit_DictionaryApp.bundle/Contents/Resources/ReadingSample.html');
   fs.renameSync(sample,sample+'.retired');
-  assert.throws(()=>packageApp(path.dirname(f.app),path.join(f.root,'bin/DictionaryApp'),{},()=>assert.fail('must not sign')),/reading sample/i);
+  assert.throws(()=>packageApp(path.dirname(f.app),path.join(f.root,'bin/Wordlit'),{},()=>assert.fail('must not sign')),/reading sample/i);
 });

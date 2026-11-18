@@ -11,7 +11,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         lookupState = ManualLookupState(coordinator: coordinator)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Dictionary"
+        window.title = "Wordlit"
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: MainWindowView(state: lookupState, coordinator: coordinator,
             onSettings: onSettings, onGettingStarted: onGettingStarted, readiness: readiness ?? .preview(), serviceSettings: serviceSettings ?? .preview(),

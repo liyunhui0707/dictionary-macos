@@ -29,18 +29,18 @@ struct PopupLayoutTests {
         let view = TranslationPopupView(state: state, onClose: {})
         state.phase = result(request, meaning: "河岸")
         state.contentHeight = 200
-        #expect(view.toolbarTitle == "Dictionary")
+        #expect(view.toolbarTitle == "Wordlit")
         state.contentHeight = 900
         #expect(view.toolbarTitle == "bank · AI 建议：河岸")
         for phase in [LookupPhase.loading(request), .finished(request, .cancelled),
                       .finished(request, .failure("Synthetic error", rawOutput: nil)), .idle] {
             state.phase = phase
-            #expect(view.toolbarTitle == "Dictionary")
+            #expect(view.toolbarTitle == "Wordlit")
         }
         state.phase = result(try .manual(target: "spring", context: ""), meaning: "泉水")
         #expect(view.toolbarTitle == "spring · AI 建议：泉水")
         state.contentHeight = 100
-        #expect(view.toolbarTitle == "Dictionary")
+        #expect(view.toolbarTitle == "Wordlit")
     }
 
     @Test(arguments: [ColorScheme.light, .dark])

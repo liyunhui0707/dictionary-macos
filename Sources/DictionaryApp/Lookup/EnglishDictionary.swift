@@ -28,7 +28,7 @@ struct EnglishEntryMatch: Identifiable, Equatable, Sendable {
 /// Loaded once, off the UI actor, for reference disclosure or local target-only lookup.
 actor EnglishDictionary {
     static let shared = EnglishDictionary(resourceURL: bundledResourceURL)
-    static let bundleName = "DictionaryApp_DictionaryApp.bundle"
+    static let bundleName = "Wordlit_DictionaryApp.bundle"
     static var bundledResourceURL: URL? {
         if Bundle.main.bundleURL.pathExtension == "app" {
             // Installed apps must never fall back to SwiftPM's absolute build-directory path.

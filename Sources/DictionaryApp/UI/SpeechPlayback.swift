@@ -130,7 +130,7 @@ struct SpeechSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("美式发音").font(.headline)
             if playback.voices.isEmpty {
-                Text("尚无可用的美式系统语音。请在 macOS 朗读设置中准备英语（美国）语音，再重开 Dictionary。")
+                Text("尚无可用的美式系统语音。请在 macOS 朗读设置中准备英语（美国）语音，再重开 Wordlit。")
             } else {
                 Picker("语音", selection: $playback.voiceID) { ForEach(playback.voices) { Text($0.name).tag($0.id) } }
                 HStack { Text("语速"); Slider(value: $playback.rate, in: 0.6...1.2); Text(playback.rate, format: .number.precision(.fractionLength(1))) }

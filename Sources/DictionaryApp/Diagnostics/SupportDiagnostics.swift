@@ -164,7 +164,7 @@ final class SupportDiagnostics: ObservableObject {
 
         func text() throws -> String {
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            return "Dictionary 诊断报告\n仅为本次 App 会话的固定状态，不证明词义准确或所有软件支持。\n不含选词、正文、模型回答、密钥、令牌、个人路径或机器信息。\n认证检查只表示本次曾收到有效请求，不代表扩展当前仍连接。\n本地模型项是最近一次主动检查的结果，不是持续健康监测。\n\n" + String(decoding: try encoder.encode(self), as: UTF8.self) + "\n"
+            return "Wordlit 诊断报告\n仅为本次 App 会话的固定状态，不证明词义准确或所有软件支持。\n不含选词、正文、模型回答、密钥、令牌、个人路径或机器信息。\n认证检查只表示本次曾收到有效请求，不代表扩展当前仍连接。\n本地模型项是最近一次主动检查的结果，不是持续健康监测。\n\n" + String(decoding: try encoder.encode(self), as: UTF8.self) + "\n"
         }
     }
 

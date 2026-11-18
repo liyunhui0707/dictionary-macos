@@ -1,6 +1,6 @@
 "use strict";
 
-// Obsidian plugin for the local Dictionary macOS app.
+// Obsidian plugin for the local Wordlit macOS app.
 //
 // Obsidian is an Electron app, so the browser extension can't reach it and the
 // Mac app's Accessibility path can't read CodeMirror's selection range. This
@@ -456,7 +456,7 @@ module.exports = class DictionaryPlugin extends Plugin {
 
     async lookup(payload) {
         if (!payload || payload.empty) {
-            new Notice("Dictionary: no text selected. Highlight a word or phrase first.");
+            new Notice("Wordlit: no text selected. Highlight a word or phrase first.");
             return;
         }
         await this.credentialReady;
@@ -467,7 +467,7 @@ module.exports = class DictionaryPlugin extends Plugin {
             if (typeof token !== 'string' || !token.trim()) throw Error();
             token = token.trim();
         } catch (_) {
-            new Notice("Dictionary: secure credential unavailable. Check SecretStorage or reload after resolving migration.");
+            new Notice("Wordlit: secure credential unavailable. Check SecretStorage or reload after resolving migration.");
             return;
         }
 
@@ -490,22 +490,22 @@ module.exports = class DictionaryPlugin extends Plugin {
                 })
             });
         } catch (err) {
-            new Notice("Dictionary app is not running. Launch it from Spotlight, then try again.");
+            new Notice("Wordlit app is not running. Launch it from Spotlight, then try again.");
             return;
         }
 
         if (response.status === 401) {
-            new Notice("Dictionary: credential rejected. Update the referenced SecretStorage entry.");
+            new Notice("Wordlit: credential rejected. Update the referenced SecretStorage entry.");
             return;
         }
         if (response.status === 503) {
             let detail = "unknown";
             try { detail = response.json?.error || detail; } catch (e) { /* ignore */ }
-            new Notice(`Dictionary: translation service error (${detail}).`);
+            new Notice(`Wordlit: translation service error (${detail}).`);
             return;
         }
         if (response.status < 200 || response.status >= 300) {
-            new Notice(`Dictionary: server returned ${response.status}.`);
+            new Notice(`Wordlit: server returned ${response.status}.`);
             return;
         }
         // 200 — the Mac app shows the popup. Nothing else to do here.
@@ -542,7 +542,7 @@ class DictionarySettingTab extends PluginSettingTab {
                         this.plugin.settings = clean;
                     } catch (_) {
                         this.plugin.credentialsBlocked = true;
-                        new Notice("Dictionary: secure credential settings could not be saved.");
+                        new Notice("Wordlit: secure credential settings could not be saved.");
                     }
                 }));
     }

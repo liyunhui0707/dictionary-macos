@@ -1,9 +1,14 @@
-# Release process
+# Wordlit release process
 
 The selected channel is an **ad-hoc signed, unnotarized macOS download**.
 Developer ID signing and Apple notarization remain an upgrade to distribution,
 not a requirement to buy membership before this channel can ship. Do not describe
 these artifacts as Apple-verified or bypass macOS security to test them.
+
+The Wordlit brand migration is prepared separately; see [brand and cutover rules](../branding/README.md).
+The previously approved 0.10.0 delivery below is historical authorization, not approval
+to publish another 0.10.0 binary, rename a repository or replace installed apps again.
+Wordlit packaging uses the new name; existing Dictionary artifacts remain immutable.
 
 1. Explicitly approve a SemVer version in `VERSION`. The selected version for the current
    delivery is 0.10.0 (Chromium extension 0.2.1), explicitly approved for the current candidate, both-Mac upgrades, PR integration and public delivery.

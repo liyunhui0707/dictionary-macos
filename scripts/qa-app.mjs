@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync, spawn} from 'node:child_process';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const roots = ['Sources', 'Tests', 'scripts', 'docs', 'extensions', '.github', 'website'];
+const roots = ['Sources', 'Tests', 'scripts', 'docs', 'extensions', '.github', 'website', 'branding'];
 const topFiles = ['Package.swift', 'VERSION', 'README.md', '.gitignore', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md', 'AGENTS.md'];
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const json = (file, value) => fs.writeFileSync(file, JSON.stringify(value,null,2)+'\n', {flag:'wx',mode:0o600});
@@ -103,7 +103,7 @@ export function signingOptions(channel = 'daily', identity) {
     throw Error('Testing builds require a persistent signing identity; no ad-hoc fallback');
   return {channel, identity: identity?.toUpperCase() ?? '-',
     bundleID: channel === 'testing' ? 'com.liyunhui.DictionaryApp.testing' : 'com.liyunhui.DictionaryApp',
-    name: channel === 'testing' ? 'Dictionary Testing' : 'Dictionary'};
+    name: channel === 'testing' ? 'Wordlit Testing' : 'Wordlit'};
 }
 
 export function assertSigningIdentityAvailable(identity, listing) {
@@ -132,11 +132,11 @@ export function verifyPronunciationBundle(resource) {
 export function packageApp(out, binary, metadata, invoke=run, signing=signingOptions(), includeQA=true, extensionSource=path.join(project,'extensions/chromium')) {
   const version=metadata.productVersion ?? fs.readFileSync(path.join(project,'VERSION'),'utf8').trim();
   if(!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) throw Error('Invalid product VERSION');
-  const app=path.join(out,'Dictionary.app');
+  const app=path.join(out,'Wordlit.app');
   fs.mkdirSync(app);fs.mkdirSync(path.join(app,'Contents/MacOS'),{recursive:true});fs.mkdirSync(path.join(app,'Contents/Resources'));
   const executable=path.join(app,'Contents/MacOS/DictionaryApp');
   fs.copyFileSync(binary,executable,fs.constants.COPYFILE_EXCL);fs.chmodSync(executable,0o755);
-  const resourceName='DictionaryApp_DictionaryApp.bundle';
+  const resourceName='Wordlit_DictionaryApp.bundle';
   const resource=path.join(path.dirname(binary),resourceName);
   if(!['Contents/Resources',''].some(prefix=>fs.existsSync(path.join(resource,prefix,'EnglishDictionary/oewn-2025.json.gz'))) || fs.lstatSync(resource).isSymbolicLink()) throw Error('Missing or unsafe dictionary resource bundle');
   const sample=['Contents/Resources/ReadingSample.html','ReadingSample.html'].map(p=>path.join(resource,p)).find(p=>fs.existsSync(p));
@@ -147,7 +147,7 @@ export function packageApp(out, binary, metadata, invoke=run, signing=signingOpt
   if(!icon || fs.lstatSync(icon).isSymbolicLink() || !fs.lstatSync(icon).isFile()) throw Error('Missing or unsafe app icon resource');
   fs.copyFileSync(icon,path.join(app,'Contents/Resources/AppIcon.icns'),fs.constants.COPYFILE_EXCL);
   bundleBrowserExtension(extensionSource,path.join(app,'Contents/Resources/BrowserExtension'));
-  const values={CFBundleDevelopmentRegion:'en',CFBundleExecutable:'DictionaryApp',CFBundleIdentifier:signing.bundleID,CFBundleInfoDictionaryVersion:'6.0',CFBundleName:signing.name,CFBundleDisplayName:signing.name,CFBundlePackageType:'APPL',CFBundleShortVersionString:version,CFBundleVersion:version,LSMinimumSystemVersion:'14.0',NSAppleEventsUsageDescription:'Dictionary uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.'};
+  const values={CFBundleDevelopmentRegion:'en',CFBundleExecutable:'DictionaryApp',CFBundleIdentifier:signing.bundleID,CFBundleInfoDictionaryVersion:'6.0',CFBundleName:signing.name,CFBundleDisplayName:signing.name,CFBundlePackageType:'APPL',CFBundleShortVersionString:version,CFBundleVersion:version,LSMinimumSystemVersion:'14.0',NSAppleEventsUsageDescription:'Wordlit uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.'};
   values.CFBundleIconFile='AppIcon';
   const plist='<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>'+Object.entries(values).map(([k,v])=>`<key>${k}</key><string>${v}</string>`).join('')+'<key>LSUIElement</key><false/><key>NSHighResolutionCapable</key><true/></dict></plist>\n';
   fs.writeFileSync(path.join(app,'Contents/Info.plist'),plist,{flag:'wx'});
@@ -184,12 +184,22 @@ export function assertLaunchSafe(processes, listeners) {
   if(processes.length || listeners.length) throw Error('Launch blocked; quit conflicting apps manually. '+JSON.stringify({processes,listeners}));
 }
 
+// Frozen pre-rename archives remain inspectable; ambiguous folders never select silently.
+export function candidateApp(directory) {
+  const candidates=['Wordlit.app','Dictionary.app'].map(name=>path.join(directory,name))
+    .filter(file=>{try { fs.lstatSync(file); return true; } catch(error) { if(error.code==='ENOENT')return false; throw error; }});
+  if(candidates.length!==1) throw Error('Expected one unambiguous Wordlit or legacy Dictionary App');
+  if(fs.lstatSync(candidates[0]).isSymbolicLink() || !fs.statSync(candidates[0]).isDirectory()) throw Error('Unsafe candidate App');
+  return candidates[0];
+}
+
 export function inspect(out) {
   const manifest=JSON.parse(fs.readFileSync(path.join(out,'build-manifest.json'),'utf8'));
   if(manifest.ready!==true) throw Error('Build is not ready');
   verifySnapshot(path.join(out,'source'),manifest.source);
-  assertIdentity(manifest.identity,binaryIdentity(path.join(out,'Dictionary.app')));
-  const embedded=JSON.parse(fs.readFileSync(path.join(out,'Dictionary.app/Contents/Resources/qa-build.json'),'utf8'));
+  const app=candidateApp(out);
+  assertIdentity(manifest.identity,binaryIdentity(app));
+  const embedded=JSON.parse(fs.readFileSync(path.join(app,'Contents/Resources/qa-build.json'),'utf8'));
   if(embedded.buildID!==manifest.buildID || embedded.sourceFingerprint!==manifest.source.fingerprint) throw Error('Embedded build identity mismatch');
   return manifest;
 }
@@ -212,7 +222,7 @@ function build(signing=signingOptions()) {
   if(compiled.error || compiled.status!==0) throw Error('Release build failed; inspect '+path.join(out,'build.log'));
   const binPath=run('/usr/bin/xcrun',[...args,'--show-bin-path'],out).trim();
   verifySnapshot(path.join(out,'source'),source);
-  const app=packageApp(out,path.join(binPath,'DictionaryApp'),metadata,run,signing,true,path.join(out,'source/extensions/chromium'));
+  const app=packageApp(out,path.join(binPath,'Wordlit'),metadata,run,signing,true,path.join(out,'source/extensions/chromium'));
   const manifest={...metadata,ready:true,toolchain,source,identity:binaryIdentity(app),signingNote:signing.identity === '-' ? 'Ad-hoc archive: permission continuity is not guaranteed. Do not use for routine desktop iteration.' : 'Certificate-signed build. Check running-process trust; do not reset permissions routinely.'};
   json(path.join(out,'build-manifest.json'),manifest);
   console.log(JSON.stringify({out,...metadata,identity:manifest.identity},null,2));
@@ -232,7 +242,7 @@ async function launch(out) {
     if(match && match.executable!==manifest.identity.executable) throw Error('Runtime executable identity mismatch');
     if(state.processes.some(p=>p.pid!==child.pid) || state.listeners.some(pid=>pid!==child.pid)) throw Error('New process/port conflict after launch; stop QA and inspect manually');
     if(match && state.listeners.includes(child.pid)) {
-      assertIdentity(manifest.identity,binaryIdentity(path.join(out,'Dictionary.app')));
+      assertIdentity(manifest.identity,binaryIdentity(candidateApp(out)));
       json(path.join(directory,'runtime-verified.json'),{buildID:manifest.buildID,runID,pid:child.pid,...state,identity:manifest.identity});
       console.log('Runtime identity and HTTP port owner verified. Evidence: '+directory);return;
     }
@@ -246,22 +256,24 @@ async function launch(out) {
 export function selectDailyBuild(root, directory, verify=inspect, checkRuntime=runtime) {
   const qa=path.join(root,'build/qa.noindex');
   const out=path.resolve(directory);
-  if(path.dirname(out)!==qa || fs.realpathSync(out)!==out ||
-     fs.realpathSync(path.join(out,'Dictionary.app'))!==path.join(out,'Dictionary.app'))
+  if(path.dirname(out)!==qa || fs.realpathSync(out)!==out)
+    throw Error('Daily target must be a real build/qa.noindex directory');
+  const app=candidateApp(out);
+  if(fs.realpathSync(app)!==app)
     throw Error('Daily target must be a real build/qa.noindex directory');
   const state=checkRuntime();assertLaunchSafe(state.processes,state.listeners);
   const manifest=verify(out);
   if (manifest.channel === 'testing') throw Error('Testing channel cannot become the daily entry');
-  const entry=path.join(root,'build/Dictionary-Daily.app');
-  const target=path.relative(path.dirname(entry),path.join(out,'Dictionary.app'));
+  const entry=path.join(root,'build/Wordlit-Daily.app');
+  const target=path.relative(path.dirname(entry),app);
   let old;
   try {
     if(!fs.lstatSync(entry).isSymbolicLink()) throw Error('Existing daily entry is not a symlink; refused');
     old=fs.readlinkSync(entry);
     const resolved=path.resolve(path.dirname(entry),old);
-    if(path.basename(resolved)!=='Dictionary.app' || path.dirname(path.dirname(resolved))!==qa)
+    if(!['Wordlit.app','Dictionary.app'].includes(path.basename(resolved)) || path.dirname(path.dirname(resolved))!==qa)
       throw Error('Existing daily entry is outside build/qa.noindex; refused');
-    if(resolved===path.join(out,'Dictionary.app')) return {entry,buildID:manifest.buildID,unchanged:true};
+    if(resolved===app) return {entry,buildID:manifest.buildID,unchanged:true};
   } catch(error) { if(error.code!=='ENOENT') throw error; }
   let previous;
   const id=stamp();

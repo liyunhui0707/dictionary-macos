@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "DictionaryApp",
+    name: "Wordlit",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "DictionaryApp", targets: ["DictionaryApp"])
+        .executable(name: "Wordlit", targets: ["DictionaryApp"])
     ],
     targets: [
         .executableTarget(

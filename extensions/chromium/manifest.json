@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Dictionary Lookup",
+  "name": "Wordlit Lookup",
   "version": "0.2.1",
-  "description": "Send selected text + paragraph context to the Dictionary macOS app for context-aware translation.",
+  "description": "Send selected text + paragraph context to the Wordlit macOS app for context-aware translation.",
   "permissions": ["activeTab", "scripting", "storage", "notifications"],
   "host_permissions": ["http://127.0.0.1:49152/*"],
   "background": {
@@ -22,7 +22,7 @@
         "default": "Alt+D",
         "mac": "Alt+D"
       },
-      "description": "Look up the selected text via the Dictionary app"
+      "description": "Look up the selected text via the Wordlit app"
     }
   },
   "options_ui": {
@@ -35,7 +35,7 @@
     "128": "icons/128.png"
   },
   "action": {
-      "default_title": "Dictionary：查词与连接检查",
+      "default_title": "Wordlit：查词与连接检查",
       "default_popup": "options.html",
       "default_icon": {
           "16": "icons/16.png",

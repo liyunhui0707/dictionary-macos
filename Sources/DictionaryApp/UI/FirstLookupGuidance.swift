@@ -46,7 +46,7 @@ struct FirstLookupGuidance {
         }
         if s.needsService { return step("下一步：选择查词服务。", .service) }
         if s.local && s.restartRequired {
-            return step("下一步：重新打开 Dictionary，让已选模型生效；当前仍使用启动时的模型。", .localModel)
+            return step("下一步：重新打开 Wordlit，让已选模型生效；当前仍使用启动时的模型。", .localModel)
         }
         if s.checking || s.manual == .querying || s.reading == .querying {
             return step("正在处理，请等待当前检查或查询完成。")

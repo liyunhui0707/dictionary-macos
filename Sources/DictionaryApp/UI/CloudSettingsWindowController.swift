@@ -33,7 +33,7 @@ final class CloudSettingsWindowController: NSWindowController, NSWindowDelegate 
         self.extensionSetup = extensionSetup ?? BrowserExtensionSetup()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Dictionary · 偏好设置"
+        window.title = "Wordlit · 偏好设置"
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -116,7 +116,7 @@ struct DictionarySettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Dictionary").font(.system(size: 15, weight: .semibold)).padding(.bottom, 16)
+                Text("Wordlit").font(.system(size: 15, weight: .semibold)).padding(.bottom, 16)
                 ForEach(DictionarySettingsSection.categories, id: \.self) { category in
                     Button { navigation.section = category } label: {
                         Label(category.rawValue, systemImage: category.symbol)
@@ -183,7 +183,7 @@ struct DictionarySettingsView: View {
                 Button("重新检查") { readiness.refresh() }.controlSize(.small)
             }.font(.system(size: 13))
             if readiness.permission != .granted {
-                Text("在系统设置中为当前 Dictionary 开启辅助功能，才能从其他 App 选词。未授权时仍可手动输入。")
+                Text("在系统设置中为当前 Wordlit 开启辅助功能，才能从其他 App 选词。未授权时仍可手动输入。")
                 Button("打开权限设置") { readiness.openSettings() }
                 if readiness.settingsOpenFailed { Text("系统设置 → 隐私与安全 → 辅助功能").font(.caption) }
             }
@@ -266,12 +266,12 @@ struct LocalModelSettingsView: View {
                     Text(settings.statusMessage).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("local-model-status")
                     if settings.status == .unavailable || settings.status == .timedOut {
-                        Text("已安装 Ollama 时先打开它，再重新检查；还未安装时，从官方网站下载安装。Dictionary 不会自动安装服务。")
+                        Text("已安装 Ollama 时先打开它，再重新检查；还未安装时，从官方网站下载安装。Wordlit 不会自动安装服务。")
                             .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                         Link("打开 Ollama 官方下载页", destination: URL(string: "https://ollama.com/download/mac")!)
                     }
                     if settings.status == .missingModel {
-                        Text("可选择下面已安装的模型。需要准备新模型时，请自行在 Ollama 中下载，完成后重新检查；模型不会随 Dictionary 安装。")
+                        Text("可选择下面已安装的模型。需要准备新模型时，请自行在 Ollama 中下载，完成后重新检查；模型不会随 Wordlit 安装。")
                             .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                         if LocalModelConfiguration.matches(settings.configuration.model, LocalModelConfiguration.defaultModel) {
                             DisclosureGroup("准备默认本地模型") {
@@ -300,14 +300,14 @@ struct LocalModelSettingsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(OllamaProvider.evaluatedReadingModel).font(.system(.body, design: .monospaced)).textSelection(.enabled)
                         Text("本机小规模合成对照中，搭配、存在句和未知标签有所改善；仍有漏译等问题，不保证每次正确。")
-                        Text("需要另行下载约 6.6 GB，运行时还需内存。准备好后检查连接，在已安装列表中选择并保存，重新打开 Dictionary 生效。不会自动下载或更换当前模型。")
+                        Text("需要另行下载约 6.6 GB，运行时还需内存。准备好后检查连接，在已安装列表中选择并保存，重新打开 Wordlit 生效。不会自动下载或更换当前模型。")
                         Text("ollama pull \(OllamaProvider.evaluatedReadingModel)")
                             .font(.system(.body, design: .monospaced)).textSelection(.enabled)
                         Link("查看该模型的官方说明", destination: URL(string: "https://ollama.com/library/qwen3.5:9b-q4_K_M")!)
                     }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                 }.font(.system(size: 12))
                 if settings.configuration.environmentOverride {
-                    Text("本次启动指定了模型。退出后以普通方式打开 Dictionary，才能在这里更改。")
+                    Text("本次启动指定了模型。退出后以普通方式打开 Wordlit，才能在这里更改。")
                         .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                 } else {
                     DictionaryCard {
@@ -331,7 +331,7 @@ struct LocalModelSettingsView: View {
                             .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
                     }
                     if settings.restartRequired {
-                        Label("重新打开 Dictionary 后使用新模型。当前查询不受影响。", systemImage: "arrow.clockwise")
+                        Label("重新打开 Wordlit 后使用新模型。当前查询不受影响。", systemImage: "arrow.clockwise")
                             .font(.system(size: 12)).foregroundStyle(DictionaryStyle.accent)
                     }
                 }

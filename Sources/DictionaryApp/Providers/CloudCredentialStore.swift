@@ -64,7 +64,7 @@ actor KeychainCloudCredentialStore: CloudCredentialStore {
         let status = client.update(query, attributes: attributes)
         if status == errSecItemNotFound {
             var item = query.merging(attributes) { _, new in new }
-            item[kSecAttrLabel as String] = "Dictionary · DeepSeek API Key"
+            item[kSecAttrLabel as String] = "Wordlit · DeepSeek API Key"
             guard client.add(item) == errSecSuccess else { throw CloudAssistanceError.credentialUnavailable }
         } else if status != errSecSuccess {
             // Never delete the previous credential to make a failed replacement succeed.

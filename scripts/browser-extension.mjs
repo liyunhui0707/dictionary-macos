@@ -12,7 +12,7 @@ export function bundleBrowserExtension(source, destination) {
     if (!fs.statSync(path.join(source,file)).isFile()) throw Error('Missing extension file');
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(source,'manifest.json'),'utf8'));
-  if (manifest.manifest_version !== 3 || manifest.name !== 'Dictionary Lookup') throw Error('Unexpected extension manifest');
+  if (manifest.manifest_version !== 3 || manifest.name !== 'Wordlit Lookup') throw Error('Unexpected extension manifest');
   fs.mkdirSync(destination); fs.mkdirSync(path.join(destination,'icons'));
   for (const file of browserExtensionFiles) fs.copyFileSync(path.join(source,file),path.join(destination,file),fs.constants.COPYFILE_EXCL);
 }

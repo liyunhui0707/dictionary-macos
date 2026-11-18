@@ -8,7 +8,7 @@ final class ReleaseUpdateWindow: NSWindowController, NSWindowDelegate {
         updates = ReleaseUpdates(installed: installed)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Dictionary · 检查更新"
+        window.title = "Wordlit · 检查更新"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
@@ -31,7 +31,7 @@ struct ReleaseUpdateView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) { DictionaryMark(); Text("Dictionary").font(.title2) }
+            HStack(spacing: 12) { DictionaryMark(); Text("Wordlit").font(.title2) }
             Text("当前版本 \(updates.installed) · \(architecture?.label ?? "芯片未识别")")
                 .font(.system(size: 12)).foregroundStyle(DictionaryStyle.secondary)
             ScrollView {
@@ -110,7 +110,7 @@ private struct ManualUpdateGuide: View {
         DictionaryCard {
             Text("更新与回退").fontWeight(.medium)
             Text("1 · 更新前记下当前版本与查词方式，保留旧安装包和已加载的扩展目录。")
-            Text("2 · 下载适合芯片的新版，退出 Dictionary 后替换“应用程序”中的 App，再从那里启动。保持一个日常入口。")
+            Text("2 · 下载适合芯片的新版，退出 Wordlit 后替换“应用程序”中的 App，再从那里启动。保持一个日常入口。")
             Text("3 · 打开“开始使用”核对原句和释义。App 与浏览器扩展分别更新；扩展有变化时，保留旧目录并按指南导出、加载新版。")
             Text("4 · 新版出现问题时，先查看“诊断与反馈”。需要回退则退出新版，从全部版本下载适合芯片的旧包，按相同方式替换；先阅读该版本的兼容说明。")
             Text("不要为升级清空设置、钥匙串密钥、模型或系统权限。临时签名的公开安装包更新后可能需要正常重新授权。")

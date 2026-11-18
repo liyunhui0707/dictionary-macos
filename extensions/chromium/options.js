@@ -15,8 +15,8 @@ async function verifyAndSave() {
             signal: AbortSignal.timeout(3000), cache: "no-store"
         });
         if (response.status !== 200) {
-            setStatus(response.status === 401 ? "令牌不匹配，请从当前 Dictionary 重新复制。" :
-                response.status === 404 ? "请更新 Dictionary App 后再配对。" : `验证失败（HTTP ${response.status}）。`, false);
+            setStatus(response.status === 401 ? "令牌不匹配，请从当前 Wordlit 重新复制。" :
+                response.status === 404 ? "请更新 Wordlit App 后再配对。" : `验证失败（HTTP ${response.status}）。`, false);
             return;
         }
         const body = await response.json();
@@ -26,7 +26,7 @@ async function verifyAndSave() {
         await chrome.storage.local.set({ token });
         tokenInput.value = "";
         setStatus("配对已保存。验证不会调用模型。", true);
-    } catch { setStatus("无法连接 Dictionary，请确认 App 已启动。", false); }
+    } catch { setStatus("无法连接 Wordlit，请确认 App 已启动。", false); }
 }
 async function checkConnection() {
     setStatus("正在检查连接…", true);

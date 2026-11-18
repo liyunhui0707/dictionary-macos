@@ -38,7 +38,7 @@ struct GettingStartedView: View {
                     Spacer()
                     Button("检查连接") { Task { await local.check() } }.disabled(local.isChecking)
                 }
-                if local.restartRequired { Text("模型已更改，正常重开 Dictionary 后生效。").font(.caption) }
+                if local.restartRequired { Text("模型已更改，正常重开 Wordlit 后生效。").font(.caption) }
             }
             Divider()
             Picker("阅读软件", selection: $readingRoute) {
@@ -103,14 +103,14 @@ struct GettingStartedView: View {
                         }
                     }.accessibilityIdentifier("copy-browser-extension-path")
                 }
-                Text("2. 打开 Dictionary Lookup，粘贴配对令牌并验证保存。")
+                Text("2. 打开 Wordlit Lookup，粘贴配对令牌并验证保存。")
                 Button("复制配对令牌") { tokenCopied = onCopyExtensionToken() }
                     .accessibilityIdentifier("copy-extension-pairing-token")
                 if let tokenCopied { Text(tokenCopied ? "已复制，请亲自粘贴到扩展。" : "未能复制，请重试。") }
                 Text("3. 在浏览器扩展快捷方式中设置 ⌥D，确认扩展显示已连接。")
             }
             DisclosureGroup("安装与隐私说明") {
-                Text("扩展需手动加载和配对，浏览器限制使应用无法代装。文件夹路径可在浏览器的选择窗口中按 ⇧⌘G 后粘贴。只启用一个 Dictionary Lookup，并只运行一个 Dictionary；不要分享令牌。浏览器扩展不需要系统选词权限，部分站点会限制扩展。更新 App 后需手动更新已加载扩展，旧目录可保留用于回退。")
+                Text("扩展需手动加载和配对，浏览器限制使应用无法代装。文件夹路径可在浏览器的选择窗口中按 ⇧⌘G 后粘贴。只启用一个 Wordlit Lookup，并只运行一个 Wordlit；不要分享令牌。浏览器扩展不需要系统选词权限，部分站点会限制扩展。更新 App 后需手动更新已加载扩展，旧目录可保留用于回退。")
                     .padding(.top, 6)
             }
         }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)

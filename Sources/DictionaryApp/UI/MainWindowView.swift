@@ -17,7 +17,7 @@ struct MainWindowView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 26) {
-                HStack(spacing: 10) { DictionaryMark(); Text("Dictionary").font(.system(size: 15, weight: .semibold)) }
+                HStack(spacing: 10) { DictionaryMark(); Text("Wordlit").font(.system(size: 15, weight: .semibold)) }
                 Label("查词与翻译", systemImage: "magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
                     .frame(maxWidth: .infinity, alignment: .leading).padding(10)

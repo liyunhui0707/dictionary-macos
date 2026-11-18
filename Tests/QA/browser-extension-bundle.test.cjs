@@ -7,7 +7,7 @@ async function fixture(){
  const api=await import('../../scripts/browser-extension.mjs');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'dictionary-extension-test-'));
  const source=path.join(root,'source');fs.mkdirSync(path.join(source,'icons'),{recursive:true});
- for(const file of api.browserExtensionFiles) fs.writeFileSync(path.join(source,file),file==='manifest.json'?JSON.stringify({manifest_version:3,name:'Dictionary Lookup'}):'synthetic '+file);
+ for(const file of api.browserExtensionFiles) fs.writeFileSync(path.join(source,file),file==='manifest.json'?JSON.stringify({manifest_version:3,name:'Wordlit Lookup'}):'synthetic '+file);
  return {api,root,source,destination:path.join(root,'bundled')};
 }
 test('bundled companion is complete and excludes unrelated files and token',async()=>{

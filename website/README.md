@@ -1,4 +1,4 @@
-# Dictionary website
+# Wordlit website
 
 Buildless static site in `dist/`. No dependencies, analytics, cookies or API keys.
 The interactive bank examples are explicitly labelled illustrations, not live model responses.

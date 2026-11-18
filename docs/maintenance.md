@@ -1,12 +1,16 @@
 # Maintenance and installation
 
+Wordlit naming below applies to the prepared source migration. Existing daily
+0.10.0 installations remain `/Applications/Dictionary.app` until an explicitly
+approved upgrade. See [cutover order](../branding/README.md#public-cutover-order).
+
 Maintain product source in this public repository. A new patch updates the same
 product, not a newly named daily application. Keep one daily installation at
-`/Applications/Dictionary.app`. Test builds and rollback evidence are separate.
+`/Applications/Wordlit.app`. Test builds and rollback evidence are separate.
 
 ## Identify the running application
 
-Use **Dictionary → 关于 Dictionary** to see the product version and exact build
+Use **Wordlit → 关于 Wordlit** to see the product version and exact build
 identifier. A shared version such as 0.1.0 does not distinguish development builds.
 The archive manifest identifies the source revision and input fingerprint. Do
 not infer that the newest timestamp is a completed or accepted release.
@@ -15,7 +19,7 @@ not infer that the newest timestamp is a completed or accepted release.
 
 The maintained builder writes candidates to `build/qa.noindex/<build-id>/`.
 Certificate-signed testing uses the fixed
-`build/testing.noindex/Dictionary Testing.app`; previous testing installations
+`build/testing.noindex/Wordlit Testing.app`; previous testing installations
 are retained under `build/testing-history.noindex/`. The `.noindex` directories
 keep build products separate from normal application discovery. Check actual
 Spotlight results when troubleshooting stale entries; do not rebuild the whole

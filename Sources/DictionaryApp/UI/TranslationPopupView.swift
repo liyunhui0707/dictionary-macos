@@ -32,7 +32,7 @@ struct TranslationPopupView: View {
             let meaning = AIMeaningPresentation(target: request.target, answer: result.translation.meaningInContext)
             return "\(request.target) · \(source)：\(meaning.text)"
         }
-        return "Dictionary"
+        return "Wordlit"
     }
 
     var body: some View {

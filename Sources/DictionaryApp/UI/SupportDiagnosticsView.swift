@@ -43,7 +43,7 @@ struct SupportDiagnosticsView: View {
                     .foregroundStyle(DictionaryStyle.secondary)
                 Button("查看选词权限", action: onPermission)
                 Text(hotkeyMessage)
-                Text("注册记录不代表按键已触发。Dictionary 在前台时暂停原生快捷键；浏览器与配套插件使用各自的查词入口。")
+                Text("注册记录不代表按键已触发。Wordlit 在前台时暂停原生快捷键；浏览器与配套插件使用各自的查词入口。")
                     .foregroundStyle(DictionaryStyle.secondary)
                 Divider()
                 Text(listenerMessage).accessibilityIdentifier("support-listener-status")
@@ -93,7 +93,7 @@ struct SupportDiagnosticsView: View {
         switch support.listener {
         case .starting: "本机扩展连接服务正在启动，尚未确认就绪。"
         case .listening: "本机扩展连接服务已就绪。"
-        case .unavailable: "本机扩展连接服务不可用。确认只运行一个 Dictionary；端口占用或服务启动失败会阻止扩展连接。"
+        case .unavailable: "本机扩展连接服务不可用。确认只运行一个 Wordlit；端口占用或服务启动失败会阻止扩展连接。"
         case .stopped: "本机扩展连接服务尚未启动或已停止。"
         }
     }
@@ -101,7 +101,7 @@ struct SupportDiagnosticsView: View {
         switch support.nativeHotkeyRegistration {
         case .unchecked: "本次尚无原生快捷键注册记录。"
         case .registered: "最近一次原生快捷键注册成功。"
-        case .failed: "最近一次原生快捷键注册失败。检查快捷键冲突，并确认只运行一个 Dictionary。"
+        case .failed: "最近一次原生快捷键注册失败。检查快捷键冲突，并确认只运行一个 Wordlit。"
         }
     }
 }
@@ -133,7 +133,7 @@ struct SupportReportPreview: View {
     private func save() {
         let panel = NSSavePanel()
         panel.title = "保存诊断报告"
-        panel.nameFieldStringValue = "Dictionary-diagnostics.txt"
+        panel.nameFieldStringValue = "Wordlit-diagnostics.txt"
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
