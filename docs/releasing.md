@@ -6,8 +6,8 @@ not a requirement to buy membership before this channel can ship. Do not describ
 these artifacts as Apple-verified or bypass macOS security to test them.
 
 1. Explicitly approve a SemVer version in `VERSION`. The selected version for the current
-   delivery is 0.10.0 (Chromium extension 0.2.1), explicitly approved for local candidate preparation.
-   Installation on daily apps, remote upgrades and public delivery are not yet authorized for this candidate.
+   delivery is 0.10.0 (Chromium extension 0.2.1), explicitly approved for the current candidate, both-Mac upgrades, PR integration and public delivery.
+   Website synchronization and deployment have also been approved for this batch.
    Future versions and their delivery scope need their own explicit decision. App packagers read that file; companion extension versions
    change only when their implementation/protocol requires it.
 2. Run `swift test` and `node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs`.
