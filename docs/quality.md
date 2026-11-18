@@ -201,7 +201,7 @@ swift test --filter DictionaryQualityTests/recordLocalQualityResponses
 跨机安装、升级与逐应用兼容性的结果应随发行记录分别列出；没有实测的项目保持未验证。
 
 
-## 0.10.0 本地候选：句段任务与体验整改
+## 0.10.0：句段任务与体验整改
 
 句段翻译采用独立请求和 `translated_text` 输出，不复用短释义字段。
 自动化覆盖主窗口／选词通道、云端辅助、实际服务适配层的受控响应、
