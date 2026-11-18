@@ -43,7 +43,7 @@ function main() {
   const out=path.join(root,'build/releases.noindex',version+'-'+arch);
   fs.mkdirSync(path.dirname(out),{recursive:true}); fs.mkdirSync(out,{mode:0o700});
   // A source export with no Git history/private files, built outside the maintainer's home.
-  const scratch=fs.mkdtempSync('/private/tmp/dictionary-public-build-');
+  const scratch=fs.mkdtempSync('/private/tmp/wordlit-public-build-');
   const source=path.join(scratch,'source'); fs.mkdirSync(source);
   const tar=path.join(scratch,'source.tar');
   // SwiftPM resolves every declared target even when only building the product.
@@ -55,7 +55,7 @@ function main() {
   const build=spawnSync('/usr/bin/xcrun',args,{cwd:scratch,encoding:'utf8',maxBuffer:16*1024*1024});
   fs.writeFileSync(path.join(out,'build.log'),(build.stdout??'')+(build.stderr??''),{flag:'wx',mode:0o600});
   if(build.error || build.status!==0) throw Error('Release compile failed; inspect private build.log');
-  const bin=path.join(run('/usr/bin/xcrun',[...args,'--show-bin-path'],scratch).trim(),'DictionaryApp');
+  const bin=path.join(run('/usr/bin/xcrun',[...args,'--show-bin-path'],scratch).trim(),'Wordlit');
   const stripped=path.join(scratch,'DictionaryApp'); fs.copyFileSync(bin,stripped);
   run('/usr/bin/strip',['-S',stripped]); fs.copyFileSync(stripped,bin);
   const stage=path.join(out,'image'); fs.mkdirSync(stage);
@@ -67,11 +67,11 @@ function main() {
   const architecture=run('/usr/bin/lipo',['-archs',path.join(app,'Contents/MacOS/DictionaryApp')]).trim();
   if(architecture!==arch) throw Error('Built architecture mismatch');
   const files=auditPublicApp(app);
-  const stem='Dictionary-'+version+'-macOS-'+arch;
+  const stem='Wordlit-'+version+'-macOS-'+arch;
   const zip=path.join(out,stem+'.zip'), dmg=path.join(out,stem+'.dmg');
   run('/usr/bin/ditto',['-c','-k','--sequesterRsrc','--keepParent',app,zip]);
   fs.symlinkSync('/Applications',path.join(stage,'Applications'));
-  run('/usr/bin/hdiutil',['create','-volname','Dictionary '+version,'-srcfolder',stage,'-ov','-format','UDZO',dmg]);
+  run('/usr/bin/hdiutil',['create','-volname','Wordlit '+version,'-srcfolder',stage,'-ov','-format','UDZO',dmg]);
   run('/usr/bin/hdiutil',['verify',dmg]);
   const assets=[zip,dmg].map(file=>({name:path.basename(file),sha256:hash(fs.readFileSync(file)),bytes:fs.statSync(file).size}));
   fs.writeFileSync(path.join(out,'SHA256SUMS'),assets.map(a=>a.sha256+'  '+a.name).join('\n')+'\n',{flag:'wx'});

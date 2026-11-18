@@ -1,6 +1,6 @@
 # Project guidance
 
-This is the public Dictionary macOS repository. Keep the accepted native interface
+This is the public Wordlit macOS repository. Keep the accepted native interface
 and prioritize reliable target/context capture and useful contextual explanations.
 
 - Never include credentials, personal paths, real user documents, machine inventories,

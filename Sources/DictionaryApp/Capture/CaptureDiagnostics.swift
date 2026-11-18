@@ -134,7 +134,7 @@ struct CaptureFailure: LocalizedError {
             return "来源窗口已变化，请重新选中文字后再试。"
         }
         if details.issues.contains(where: { $0.code == .accessibilityNotTrusted }) {
-            return "当前 Dictionary 尚无选词权限。请在系统设置中为当前应用开启辅助功能，再重试。"
+            return "当前 Wordlit 尚无选词权限。请在系统设置中为当前应用开启辅助功能，再重试。"
         }
         if details.issues.contains(where: { $0.code == .noSelection }) {
             return "没有读到选中文字。请先选中英文再试，也可以在主窗口输入。"

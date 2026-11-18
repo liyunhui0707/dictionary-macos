@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds Dictionary.app as a proper macOS bundle and drops it in build/.
+# Builds Wordlit.app as a proper macOS bundle and drops it in build/.
 # Ad-hoc signing does not guarantee Accessibility trust across rebuilds.
 # Use --qa for a unique bundle, frozen source and verified build manifest.
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == "--testing" ]]; then
     exec node scripts/qa-app.mjs build-testing "${@:2}"
 fi
 
-APP_NAME="Dictionary"
+APP_NAME="Wordlit"
 EXEC_NAME="DictionaryApp"
 BUNDLE_ID="com.liyunhui.${EXEC_NAME}"
 VERSION="$(cat VERSION)"
@@ -33,7 +33,7 @@ fi
 echo "→ Building release binary…"
 xcrun swift build -c release
 
-EXEC_PATH="$(xcrun swift build -c release --show-bin-path)/${EXEC_NAME}"
+EXEC_PATH="$(xcrun swift build -c release --show-bin-path)/Wordlit"
 if [ ! -x "${EXEC_PATH}" ]; then
     echo "Build did not produce ${EXEC_PATH}"
     exit 1
@@ -52,7 +52,7 @@ mkdir -p "${APP}/Contents/MacOS"
 mkdir -p "${APP}/Contents/Resources"
 
 cp "${EXEC_PATH}" "${APP}/Contents/MacOS/${EXEC_NAME}"
-RESOURCE_BUNDLE="$(dirname "${EXEC_PATH}")/DictionaryApp_DictionaryApp.bundle"
+RESOURCE_BUNDLE="$(dirname "${EXEC_PATH}")/Wordlit_DictionaryApp.bundle"
 if [[ -L "${RESOURCE_BUNDLE}" ]] || [[ ! -f "${RESOURCE_BUNDLE}/Contents/Resources/EnglishDictionary/oewn-2025.json.gz" && ! -f "${RESOURCE_BUNDLE}/EnglishDictionary/oewn-2025.json.gz" ]]; then
     echo "Missing or unsafe dictionary resource bundle." >&2
     exit 1
@@ -98,7 +98,7 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Dictionary uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.</string>
+    <string>Wordlit uses Apple Events to read the selected text and its surrounding paragraph from Safari, so it can translate the word in context.</string>
 </dict>
 </plist>
 PLIST

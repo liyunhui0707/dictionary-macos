@@ -31,7 +31,7 @@ struct BrowserExtensionExport {
 
     static func prepare(source: URL?, parent: URL) throws -> Prepared {
         let contents = try payload(source)
-        let destination = parent.appendingPathComponent("Dictionary Browser Extension \(contents.version)", isDirectory: true)
+        let destination = parent.appendingPathComponent("Wordlit Browser Extension \(contents.version)", isDirectory: true)
         let manager = FileManager.default
         // Includes dangling links. Reuse means no writes, renames or browser reload.
         if (try? manager.attributesOfItem(atPath: destination.path)) != nil {

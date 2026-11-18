@@ -68,7 +68,7 @@ struct CloudAssistanceTests {
         #expect(await provider.calls.count == 1)
         cloud.prepare(nil)
         state.phase = .loading(request)
-        #expect(popup.toolbarTitle == "Dictionary")
+        #expect(popup.toolbarTitle == "Wordlit")
         #expect(cloud.selectedSource == .original)
     }
 

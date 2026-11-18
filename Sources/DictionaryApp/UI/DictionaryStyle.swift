@@ -25,10 +25,8 @@ enum DictionaryStyle {
 
 struct DictionaryMark: View {
     var body: some View {
-        Text("d.").font(.system(size: 27, weight: .medium, design: .serif).italic())
-            .foregroundStyle(DictionaryStyle.paper)
+        Image(nsImage: WordlitBrand.icon).resizable().interpolation(.high)
             .frame(width: 36, height: 36)
-            .background(DictionaryStyle.accent, in: RoundedRectangle(cornerRadius: 10))
             .accessibilityHidden(true)
     }
 }

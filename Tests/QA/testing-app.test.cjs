@@ -12,8 +12,8 @@ function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dictionary-stage-test-')));
   function create(id, sig=signature) {
     const out=path.join(root, 'build/qa.noindex', id);
-    fs.mkdirSync(path.join(out,'Dictionary.app'), {recursive:true});
-    fs.writeFileSync(path.join(out,'Dictionary.app','fixture.json'), JSON.stringify({id, sig}));
+    fs.mkdirSync(path.join(out,'Wordlit.app'), {recursive:true});
+    fs.writeFileSync(path.join(out,'Wordlit.app','fixture.json'), JSON.stringify({id, sig}));
     return out;
   }
   function identify(app) {
@@ -21,7 +21,7 @@ function fixture() {
     return {executable:path.join(app,'Contents/MacOS/DictionaryApp'), bundleID:'com.liyunhui.DictionaryApp.testing',
       uuid:id, sha256:id, signature:sig};
   }
-  const verify=out=>({buildID:path.basename(out), channel:'testing', identity:identify(path.join(out,'Dictionary.app'))});
+  const verify=out=>({buildID:path.basename(out), channel:'testing', identity:identify(path.join(out,'Wordlit.app'))});
   const idle=()=>({processes:[],listeners:[]});
   return {root,create,identify,verify,idle};
 }
@@ -43,7 +43,7 @@ test('packaging passes the selected certificate and isolates testing bundle name
   const f=fixture(); const out=f.create('package');
   const packageOut=path.join(f.root,'build/package');fs.mkdirSync(packageOut);
   const binary=path.join(out,'binary');fs.writeFileSync(binary,'synthetic');
-  const resources=path.join(out,'DictionaryApp_DictionaryApp.bundle/EnglishDictionary');
+  const resources=path.join(out,'Wordlit_DictionaryApp.bundle/EnglishDictionary');
   fs.mkdirSync(resources,{recursive:true});fs.writeFileSync(path.join(resources,'oewn-2025.json.gz'),'data');
   fs.writeFileSync(path.join(resources,'../AppIcon.icns'),'icon');
   fs.writeFileSync(path.join(resources, '../ReadingSample.html'), 'synthetic reading sample');
@@ -55,21 +55,36 @@ test('packaging passes the selected certificate and isolates testing bundle name
   const app=packageApp(packageOut,binary,{buildID:'test'},(cmd,args)=>calls.push([cmd,args]),signingOptions('testing',fingerprint));
   assert.deepEqual(calls[0],['/usr/bin/codesign',['--sign',fingerprint,app]]);
   assert.match(fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8'),/com.liyunhui.DictionaryApp.testing/);
-  assert.match(fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8'),/Dictionary Testing/);
+  assert.match(fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8'),/Wordlit Testing/);
 });
 
 test('two staged versions retain a fixed entry, preserve old bytes and do not change daily', async () => {
   const {stageTestingBuild}=await staging;const f=fixture();
   const first=f.create('first'), second=f.create('second');
-  fs.mkdirSync(path.join(f.root,'build/Dictionary-Daily.app'));
-  fs.writeFileSync(path.join(f.root,'build/Dictionary-Daily.app/sentinel'),'unchanged');
+  fs.mkdirSync(path.join(f.root,'build/Wordlit-Daily.app'));
+  fs.writeFileSync(path.join(f.root,'build/Wordlit-Daily.app/sentinel'),'unchanged');
   const a=stageTestingBuild(f.root,first,f.verify,f.identify,f.idle);
   const b=stageTestingBuild(f.root,second,f.verify,f.identify,f.idle);
   assert.equal(a.entry,b.entry);
   assert.equal(f.identify(b.entry).sha256,'second');
-  assert.equal(f.identify(path.join(b.backup,'Dictionary Testing.app')).sha256,'first');
-  assert.equal(fs.readFileSync(path.join(f.root,'build/Dictionary-Daily.app/sentinel'),'utf8'),'unchanged');
+  assert.equal(f.identify(path.join(b.backup,'Wordlit Testing.app')).sha256,'first');
+  assert.equal(fs.readFileSync(path.join(f.root,'build/Wordlit-Daily.app/sentinel'),'utf8'),'unchanged');
   assert(stageTestingBuild(f.root,second,f.verify,f.identify,f.idle).unchanged);
+});
+
+test('Wordlit testing upgrade verifies and archives an existing Dictionary testing installation', async () => {
+  const {stageTestingBuild}=await staging;const f=fixture();
+  const first=f.create('legacy'), second=f.create('wordlit');
+  const installed=stageTestingBuild(f.root,first,f.verify,f.identify,f.idle);
+  const legacy=path.join(path.dirname(installed.entry),'Dictionary Testing.app');
+  fs.renameSync(installed.entry,legacy);
+  const receipt=path.join(path.dirname(legacy),'current.json');
+  const record=JSON.parse(fs.readFileSync(receipt,'utf8'));record.identity=f.identify(legacy);
+  fs.writeFileSync(receipt,JSON.stringify(record));
+  const upgraded=stageTestingBuild(f.root,second,f.verify,f.identify,f.idle);
+  assert.equal(path.basename(upgraded.entry),'Wordlit Testing.app');
+  assert.equal(f.identify(upgraded.entry).sha256,'wordlit');
+  assert.equal(f.identify(path.join(upgraded.backup,'Dictionary Testing.app')).sha256,'legacy');
 });
 
 test('ad hoc, weak requirements, identity changes and wrong channel cannot replace testing', async () => {
@@ -79,7 +94,7 @@ test('ad hoc, weak requirements, identity changes and wrong channel cannot repla
   for (const sig of ['Signature=adhoc\n# designated => cdhash H"abc"', '# designated => identifier "example"', signature.replace('anchor apple generic', 'anchor apple generic and certificate leaf = H"changed"')]) {
     const next=f.create('bad-'+Math.random(),sig);
     assert.throws(()=>stageTestingBuild(f.root,next,f.verify,f.identify,f.idle),/signature|requirement/i);
-    assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Dictionary Testing.app')).sha256,'first');
+    assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Wordlit Testing.app')).sha256,'first');
   }
   assert.throws(()=>persistentRequirement({signature:''}),/signature/i);
   assert.throws(()=>stageTestingBuild(f.root,first,out=>({...f.verify(out),channel:'daily'}),f.identify,f.idle),/separately/);
@@ -91,7 +106,7 @@ test('failed copy verification, running app and concurrent staging preserve the 
   stageTestingBuild(f.root,first,f.verify,f.identify,f.idle);
   const altered=app=>({...f.identify(app), ...(app.includes('testing-stage-') ? {sha256:'corrupt'} : {})});
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,altered,f.idle),/mismatch/);
-  assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Dictionary Testing.app')).sha256,'first');
+  assert.equal(f.identify(path.join(f.root,'build/testing.noindex/Wordlit Testing.app')).sha256,'first');
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,f.identify,()=>({processes:[{pid:42}],listeners:[]})),/blocked/i);
   fs.mkdirSync(path.join(f.root,'build/testing-stage.lock'));
   assert.throws(()=>stageTestingBuild(f.root,second,f.verify,f.identify,f.idle),/EEXIST/);
@@ -100,5 +115,5 @@ test('failed copy verification, running app and concurrent staging preserve the 
 test('testing channel cannot switch the daily shortcut', async () => {
   const {selectDailyBuild}=await api;const f=fixture();const candidate=f.create('test');
   assert.throws(()=>selectDailyBuild(f.root,candidate,f.verify,f.idle),/cannot become/);
-  assert(!fs.existsSync(path.join(f.root,'build/Dictionary-Daily.app')));
+  assert(!fs.existsSync(path.join(f.root,'build/Wordlit-Daily.app')));
 });

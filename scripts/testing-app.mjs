@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {inspect, binaryIdentity, assertIdentity, runtime, assertLaunchSafe} from './qa-app.mjs';
+import {inspect, binaryIdentity, assertIdentity, runtime, assertLaunchSafe, candidateApp} from './qa-app.mjs';
 
 // Immutable QA archives are evidence. Only this fixed, separately identified
 // testing installation is used for routine desktop acceptance. Never edits TCC.
@@ -17,7 +17,7 @@ export function stageTestingBuild(root, directory, verify=inspect, identify=bina
   const out = path.resolve(directory);
   if (path.dirname(out) !== path.join(root, 'build/qa.noindex') || fs.realpathSync(out) !== out)
     throw Error('Testing target must be a real build/qa.noindex directory');
-  const source = path.join(out, 'Dictionary.app');
+  const source = candidateApp(out);
   if (fs.realpathSync(source) !== source) throw Error('Symlink App refused');
   const state = checkRuntime(); assertLaunchSafe(state.processes, state.listeners);
   const manifest = verify(out);
@@ -27,16 +27,19 @@ export function stageTestingBuild(root, directory, verify=inspect, identify=bina
   const build = path.join(root, 'build');
   if (fs.realpathSync(build) !== build) throw Error('Symlink build directory refused');
   const destination = path.join(build, 'testing.noindex');
-  const appName = 'Dictionary Testing.app';
+  const appName = 'Wordlit Testing.app';
   let previous;
+  let previousAppName = appName;
   if (fs.existsSync(destination)) {
     if (fs.realpathSync(destination) !== destination) throw Error('Symlink testing directory refused');
     previous = JSON.parse(fs.readFileSync(path.join(destination, 'current.json'), 'utf8'));
-    const current = identify(path.join(destination, appName));
+    previousAppName = path.basename(path.dirname(path.dirname(path.dirname(previous.identity.executable))));
+    if (!['Wordlit Testing.app','Dictionary Testing.app'].includes(previousAppName)) throw Error('Unexpected existing testing App path');
+    const current = identify(path.join(destination, previousAppName));
     assertIdentity(previous.identity, current);
     if (persistentRequirement(current) !== requirement)
       throw Error('Signing requirement changed; stop and investigate identity before touching permissions');
-    if (previous.buildID === manifest.buildID) return {entry:path.join(destination, appName), unchanged:true};
+    if (previous.buildID === manifest.buildID) return {entry:path.join(destination, previousAppName), unchanged:true};
   }
   const lock = path.join(build, 'testing-stage.lock');
   fs.mkdirSync(lock); // Exclusive; an interrupted run requires inspection, not blind retry.
@@ -58,7 +61,7 @@ export function stageTestingBuild(root, directory, verify=inspect, identify=bina
     // destination another process changed while the copy was being verified.
     const latest = checkRuntime(); assertLaunchSafe(latest.processes, latest.listeners);
     if (previous) {
-      assertIdentity(previous.identity, identify(path.join(destination, appName)));
+      assertIdentity(previous.identity, identify(path.join(destination, previousAppName)));
     } else if (fs.existsSync(destination)) throw Error('Testing destination appeared during staging');
     const backup = previous ? path.join(history, id) : undefined;
     if (backup) fs.renameSync(destination, backup);

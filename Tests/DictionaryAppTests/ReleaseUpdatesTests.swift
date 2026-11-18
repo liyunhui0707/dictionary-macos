@@ -4,6 +4,47 @@ import Testing
 
 @MainActor
 struct ReleaseUpdatesTests {
+    @Test func renamedRepositoryFallbackIsBoundedAndNeverFollowsLocation() async throws {
+        let data = try payload(url: "https://github.com/liyunhui0707/wordlit/releases/tag/v0.3.0")
+        for code in [301, 308, 404] {
+            let source = ReleaseTransport(statuses: [code, 200], data: data)
+            let release = try await PublicRelease.fetch(using: { try await source.send($0) })
+            #expect(release?.version == "v0.3.0")
+            #expect(await source.addresses == [PublicRelease.endpoint, PublicRelease.wordlitEndpoint])
+        }
+        let unavailable = ReleaseTransport(statuses: [503], data: data)
+        await #expect(throws: (any Error).self) {
+            try await PublicRelease.fetch(using: { try await unavailable.send($0) })
+        }
+        #expect(await unavailable.addresses == [PublicRelease.endpoint])
+        let absent = ReleaseTransport(statuses: [404, 404], data: data)
+        #expect(try await PublicRelease.fetch(using: { try await absent.send($0) }) == nil)
+        #expect(await absent.addresses.count == 2)
+        let redirectLoop = ReleaseTransport(statuses: [301, 301], data: data)
+        await #expect(throws: (any Error).self) {
+            try await PublicRelease.fetch(using: { try await redirectLoop.send($0) })
+        }
+        #expect(await redirectLoop.addresses.count == 2)
+    }
+    @Test func wordlitMigrationAcceptsNewAndLegacyReleasesWithoutWideningTrust() throws {
+        for repository in ["wordlit", "dictionary-macos"] {
+            let base = "https://github.com/liyunhui0707/\(repository)/releases"
+            let names = ["Wordlit-0.3.0-macOS-arm64.dmg", "Dictionary-0.3.0-macOS-arm64.zip"]
+            let assets = names.map { asset($0, url: "\(base)/download/v0.3.0/\($0)") }
+            let release = try PublicRelease.decode(payload(url: "\(base)/tag/v0.3.0", assets: assets))
+            #expect(release.installer(for: .arm64, format: .dmg)?.name == names[0])
+            #expect(release.installer(for: .arm64, format: .zip)?.name == names[1])
+        }
+        let name = "Wordlit-0.3.0-macOS-arm64.dmg"
+        let preferred = try PublicRelease.decode(payload(assets: [asset("Dictionary-0.3.0-macOS-arm64.dmg"), asset(name)]))
+        #expect(preferred.installer(for: .arm64, format: .dmg)?.name == name)
+        let unrelated = try PublicRelease.decode(payload(assets: [asset(name,
+            url: "https://github.com/other/wordlit/releases/download/v0.3.0/\(name)")]))
+        #expect(unrelated.installer(for: .arm64, format: .dmg) == nil)
+        #expect(throws: (any Error).self) {
+            try PublicRelease.decode(payload(url: "https://github.com/liyunhui0707/wordlit-copy/releases/tag/v0.3.0"))
+        }
+    }
     @Test func hostArchitectureDistinguishesIntelFromRosettaAndUnknown() {
         #expect(ReleaseArchitecture.host(process: .arm64, translationState: nil) == .arm64)
         #expect(ReleaseArchitecture.host(process: .x86_64, translationState: 0) == .x86_64)
@@ -131,6 +172,22 @@ struct ReleaseUpdatesTests {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         while !condition() && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         #expect(condition())
+    }
+}
+
+private actor ReleaseTransport {
+    private var statuses: [Int]
+    private let data: Data
+    private(set) var addresses: [URL] = []
+    init(statuses: [Int], data: Data) { self.statuses = statuses; self.data = data }
+    func send(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        let address = try #require(request.url)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        addresses.append(address)
+        let status = try #require(statuses.first)
+        statuses.removeFirst()
+        return (data, try #require(HTTPURLResponse(url: address, statusCode: status,
+            httpVersion: "HTTP/1.1", headerFields: ["Location": "https://untrusted.invalid/release"])))
     }
 }
 

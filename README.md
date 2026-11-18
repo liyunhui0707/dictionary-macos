@@ -1,17 +1,23 @@
-# Dictionary
+# Wordlit
+
+<img src="branding/wordlit-mark.svg" alt="Wordlit 图标" width="88" height="88">
+
+原名 Dictionary，自 0.11.0 起统一为 **Wordlit**。0.10.0 及更早的安装包继续使用旧名称，
+请以 Releases 实际列出的版本与文件为准；历史包和校验值不会改名或覆盖。
+迁移设计和兼容约定见 [品牌说明](branding/README.md)。
 
 **读懂此处的词义，继续你的阅读。**
 
-Dictionary 是一款原生 macOS 英汉查词工具。在阅读时选中英文，按 **⌥D**，
+Wordlit 是一款原生 macOS 英汉查词工具。在阅读时选中英文，按 **⌥D**，
 结合可获取的原句和段落查看中文释义。0.10.0 新增句段完整翻译、
 美式音标参考与点击朗读；主窗口和选词浮窗使用相同任务分流，可手动切换查词／翻译。
 
-下载以 Releases 实际版本为准。功能、质量边界和安装核对范围见 [0.10.0 版本说明](docs/releases/0.10.0.md)。
+下载以 Releases 实际版本为准。功能、质量边界和安装核对范围见 [0.11.0 版本说明](docs/releases/0.11.0.md)。
 
 [官网](https://dictionary-macos-liyunhui.outerepoch3.chatgpt.site) ·
-[版本与下载](https://github.com/liyunhui0707/dictionary-macos/releases) ·
+[版本与下载](https://github.com/liyunhui0707/wordlit/releases) ·
 [使用指南](docs/guide.md) · [隐私说明](PRIVACY.md) ·
-[反馈问题](https://github.com/liyunhui0707/dictionary-macos/issues)
+[反馈问题](https://github.com/liyunhui0707/wordlit/issues)
 
 ## 功能
 
@@ -32,19 +38,19 @@ AI 释义用于辅助理解，可能出现错误。参考词典与 AI 结果分�
 
 ## 安装与开始使用
 
-安装包与最新正式版本以 [GitHub Releases](https://github.com/liyunhui0707/dictionary-macos/releases/latest) 为准。[0.10.0 版本说明](docs/releases/0.10.0.md)列出本版改进、安装核对及已知限制。
+安装包与最新正式版本以 [GitHub Releases](https://github.com/liyunhui0707/wordlit/releases/latest) 为准。[0.11.0 版本说明](docs/releases/0.11.0.md)列出本版改进、安装核对及已知限制。
 
 系统要求为 **macOS 14 或更新版本**。下载时请选择与你的芯片架构相符的安装包。
 正式应用安装包以 Releases 实际列出的资产为准；没有安装包时可按下方步骤从源码构建。
 下载源码 ZIP 不等于已安装应用。当前分发渠道采用临时签名，**未经 Apple 公证**；
 首次打开可能需要用户在系统设置中确认，详见 [安装指南](docs/guide.md#安装与首次打开)。
 
-1. 将 Dictionary 拖入“应用程序”，然后打开。
+1. 将下载的应用拖入“应用程序”，然后打开（0.11.0 起名为 Wordlit）。
 2. 首次选择云端或本地服务；**开始使用** 是可选接入指南。
 3. 云端模式：保存自己的 DeepSeek API 密钥，确认数据发送和用量费用后选择 DeepSeek。无需安装 Ollama。
    本地模式：安装并运行 [Ollama](https://ollama.com/download)，准备模型后选择本地查词，在“偏好设置 → 翻译与发音 → Ollama 配置”检查连接。
 4. 在主窗口输入英文并查询；补充完整原句有助于理解词义。
-5. 使用其他软件内的 ⌥D 查词时，按系统提示为 Dictionary 开启选词权限。
+5. 使用其他软件内的 ⌥D 查词时，按系统提示为 Wordlit 开启选词权限。
 
 应用不附带 API 密钥或本地模型。本地默认模型为 `qwen2.5:7b`，不同模型和硬件的速度、质量有所不同。
 云端主服务会在每次查词时发送选词及可获取的语境；保存密钥本身不会选择云端主服务或发起 API 测试。
@@ -99,16 +105,16 @@ Books 屏幕语境需要单独的 macOS 屏幕录制权限，只在查词时尝�
 下载已打包的应用不需要安装这些开发工具。
 
 ```sh
-git clone https://github.com/liyunhui0707/dictionary-macos.git
-cd dictionary-macos
+git clone https://github.com/liyunhui0707/wordlit.git
+cd wordlit
 swift test
 node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs
 node scripts/qa-app.mjs build
 ```
 
-最后一条命令在 `build/qa.noindex/<build-id>/Dictionary.app` 生成独立应用包，并保存构建清单。
-测试包位于 `.noindex` 目录，日常只从 `/Applications/Dictionary.app` 启动。
-通过 **Dictionary → 关于 Dictionary** 查看产品版本和确切构建编号，避免把同版本号的测试构建混淆。
+最后一条命令在 `build/qa.noindex/<build-id>/Wordlit.app` 生成独立应用包，并保存构建清单。
+测试包位于 `.noindex` 目录，日常只从 `/Applications/Wordlit.app` 启动。
+通过 **Wordlit → 关于 Wordlit** 查看产品版本和确切构建编号，避免把同版本号的测试构建混淆。
 默认使用临时签名，适合本地构建；跨机器分发请遵循 [发布流程](docs/releasing.md)。
 在有开发证书的机器上，固定测试路径可使用 `build-testing --signing-identity <证书指纹>`
 与 `stage-testing <构建目录>`；不要为每次修改重建系统权限条目。

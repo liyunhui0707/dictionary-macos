@@ -9,8 +9,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Dictionary 版本
-      placeholder: 在“关于 Dictionary”中查看，例如 0.9.1。
+      label: Wordlit 版本
+      placeholder: 在“关于 Wordlit”中查看，例如 0.9.1。
   - type: dropdown
     id: reader
     attributes:

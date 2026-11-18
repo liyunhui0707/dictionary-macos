@@ -228,7 +228,7 @@ async function nativeFixture({changeAfter,mutate,popup={}}={}) {
   const fixture=path.join(candidate,'operator-fixtures/TextEdit-phase1a.txt');
   fs.writeFileSync(fixture,'The bank approved my loan. We sat on the bank of the river.\n');
   const manifest={buildID:'test-build',source:{files:[],fingerprint:'test-source'},identity:{
-    executable:path.join(candidate,'Dictionary.app/Contents/MacOS/DictionaryApp'),bundleID:'com.liyunhui.DictionaryApp',
+    executable:path.join(candidate,'Wordlit.app/Contents/MacOS/DictionaryApp'),bundleID:'com.liyunhui.DictionaryApp',
     uuid:'test-uuid',signature:'test-signature',sha256:'test-sha'}};
   const state={pid:101,listeners:[101],processStart:'Mon Oct 26 01:00:00 2026',logOpen:true,identity:structuredClone(manifest.identity)};
   fs.writeFileSync(path.join(run,'runtime-verified.json'),JSON.stringify({pid:101}));

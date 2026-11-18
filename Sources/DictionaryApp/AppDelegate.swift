@@ -241,17 +241,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             httpServer = server
         } catch {
             DispatchQueue.main.async { [weak support] in support?.listenerChanged(.unavailable) }
-            NSLog("Dictionary HTTP server failed to start on port \(Self.httpPort): \(error)")
+            NSLog("Wordlit HTTP server failed to start on port \(Self.httpPort): \(error)")
         }
     }
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: "Dictionary")
+            button.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: "Wordlit")
         }
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "打开 Dictionary", action: #selector(openDictionary), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "打开 Wordlit", action: #selector(openDictionary), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "诊断与反馈…", action: #selector(openSupport), keyEquivalent: ""))
@@ -273,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let build = QABuildIdentity.current?.buildID ??
             (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "源码运行")
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .applicationName: WordlitBrand.name,
             .applicationVersion: version,
             .version: build,
             .credits: NSAttributedString(string: "根据语境理解英文。\nAI 释义请结合原句与词典参考核对。")
@@ -312,15 +313,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupApplicationMenu() {
         let main = NSMenu()
         let application = NSMenu()
-        application.addItem(NSMenuItem(title: "关于 Dictionary", action: #selector(showAboutDictionary), keyEquivalent: ""))
+        application.addItem(NSMenuItem(title: "关于 Wordlit", action: #selector(showAboutDictionary), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "开始使用…", action: #selector(openGettingStarted), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "偏好设置…", action: #selector(openSettings), keyEquivalent: ","))
         application.addItem(NSMenuItem(title: "诊断与反馈…", action: #selector(openSupport), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: ""))
         application.addItem(NSMenuItem(title: "查看更新与下载…", action: #selector(openReleaseDownloads), keyEquivalent: ""))
         application.addItem(.separator())
-        application.addItem(NSMenuItem(title: "隐藏 Dictionary", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
-        application.addItem(NSMenuItem(title: "退出 Dictionary", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        application.addItem(NSMenuItem(title: "隐藏 Wordlit", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        application.addItem(NSMenuItem(title: "退出 Wordlit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         let appItem = NSMenuItem()
         appItem.submenu = application
         main.addItem(appItem)
@@ -334,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         main.addItem(editItem)
         let window = NSMenu(title: "窗口")
-        window.addItem(NSMenuItem(title: "打开 Dictionary", action: #selector(openDictionary), keyEquivalent: "0"))
+        window.addItem(NSMenuItem(title: "打开 Wordlit", action: #selector(openDictionary), keyEquivalent: "0"))
         window.addItem(NSMenuItem(title: "关闭", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
         window.addItem(NSMenuItem(title: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
         let windowItem = NSMenuItem(title: "窗口", action: nil, keyEquivalent: "")

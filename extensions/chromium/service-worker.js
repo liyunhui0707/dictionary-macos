@@ -40,11 +40,11 @@ async function notify(message) {
         await chrome.notifications.create({
             type: "basic",
             iconUrl: "icons/48.png",
-            title: "Dictionary",
+            title: "Wordlit",
             message
         });
     } catch (err) {
-        console.error("[Dictionary] notification failed:", err);
+        console.error("[Wordlit] notification failed:", err);
     }
 }
 
@@ -61,27 +61,27 @@ async function report(ok, message) {
 
 async function checkConnection() {
     const token = await getToken();
-    if (!token) return { ok: false, message: "尚未配对。请从 Dictionary 菜单复制扩展令牌并在此保存。" };
+    if (!token) return { ok: false, message: "尚未配对。请从 Wordlit 菜单复制扩展令牌并在此保存。" };
     try {
         const response = await fetch("http://127.0.0.1:49152/v1/status", {
             headers: { Authorization: `Bearer ${token}` },
             signal: AbortSignal.timeout(3000), cache: "no-store"
         });
-        if (response.status === 401) return { ok: false, message: "配对已失效，请重新从当前 Dictionary 复制令牌。" };
-        if (response.status === 404) return { ok: false, message: "Dictionary 版本较旧，请更新 App 后再检查连接。" };
+        if (response.status === 401) return { ok: false, message: "配对已失效，请重新从当前 Wordlit 复制令牌。" };
+        if (response.status === 404) return { ok: false, message: "Wordlit 版本较旧，请更新 App 后再检查连接。" };
         if (response.status !== 200) return { ok: false, message: `连接检查失败（HTTP ${response.status}）。` };
         const body = await response.json();
         if (body.service !== "dictionary" || body.protocol !== 1) return { ok: false, message: "本机服务响应不兼容。" };
-        return { ok: true, message: "已连接 Dictionary。连接检查不会调用模型。" };
+        return { ok: true, message: "已连接 Wordlit。连接检查不会调用模型。" };
     } catch {
-        return { ok: false, message: "无法连接 Dictionary，请启动 App；若已运行，检查是否有另一版本占用端口。" };
+        return { ok: false, message: "无法连接 Wordlit，请启动 App；若已运行，检查是否有另一版本占用端口。" };
     }
 }
 
 function captureFailure(error) {
     const detail = String(error?.message ?? '');
     if (/permission|cannot access|cannot be scripted|extensionssettings|access denied/i.test(detail))
-        return "浏览器未允许读取此页（CAPTURE_ACCESS_DENIED）。请检查 Dictionary Lookup 的站点访问设置；扩展不会自行修改权限。";
+        return "浏览器未允许读取此页（CAPTURE_ACCESS_DENIED）。请检查 Wordlit Lookup 的站点访问设置；扩展不会自行修改权限。";
     if (/receiving end does not exist/i.test(detail))
         return "页面查词组件未连接（CAPTURE_NO_RECEIVER）。请刷新网页；浏览器内部页面和受限页面不支持读取。";
     if (/message port closed|channel closed|context invalidated/i.test(detail))
@@ -119,7 +119,7 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
     if (!payload || payload.empty) {
         pendingCapture = null;
         if (payload?.reason === 'frameUnavailable') {
-            return report(false, "无法读取当前嵌入式阅读区。跨域或受限页面可在 Dictionary 中手动输入单词与语境。");
+            return report(false, "无法读取当前嵌入式阅读区。跨域或受限页面可在 Wordlit 中手动输入单词与语境。");
         }
         return report(false, "请先在网页正文中选中英文单词。");
     }
@@ -129,7 +129,7 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
     if (!current()) return sourceChanged();
     if (!token) {
         pendingCapture = null;
-        return report(false, "尚未配对，请打开 Dictionary 扩展设置保存令牌。");
+        return report(false, "尚未配对，请打开 Wordlit 扩展设置保存令牌。");
     }
 
     const [active] = await chrome.tabs.query({active:true,lastFocusedWindow:true});
@@ -138,7 +138,7 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
         (request.tab.windowId !== undefined && active.windowId !== request.tab.windowId)) return sourceChanged();
 
     // 3. POST to the Mac app. No asynchronous gap after the source check.
-    // Dictionary opening its own popup can move window focus after submission;
+    // Wordlit opening its own popup can move window focus after submission;
     // that must not turn a completed lookup into a spurious cancellation.
     pendingCapture = null;
     let response;
@@ -159,21 +159,21 @@ async function lookup(tabId, request = {generation:++lookupGeneration,tab:{id:ta
         });
     } catch (err) {
         if (!current()) return sourceChanged();
-        return report(false, "无法连接 Dictionary，请启动 App 后重试。");
+        return report(false, "无法连接 Wordlit，请启动 App 后重试。");
     }
 
     if (!current()) return sourceChanged();
 
     if (response.status === 401) {
-        return report(false, "配对已失效，请从当前 Dictionary 重新复制令牌。");
+        return report(false, "配对已失效，请从当前 Wordlit 重新复制令牌。");
     }
     if (response.status === 503) {
-        return report(false, "翻译服务暂不可用，请在 Dictionary 中检查查词服务设置。");
+        return report(false, "翻译服务暂不可用，请在 Wordlit 中检查查词服务设置。");
     }
     if (!response.ok) {
         return report(false, `查询失败（HTTP ${response.status}）。`);
     }
-    return report(true, response.status === 204 ? "查询已取消。" : "查询已完成，请查看 Dictionary 浮窗。");
+    return report(true, response.status === 204 ? "查询已取消。" : "查询已完成，请查看 Wordlit 浮窗。");
 }
 
 async function lookupActiveTab(commandTab) {

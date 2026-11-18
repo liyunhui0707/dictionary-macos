@@ -52,8 +52,16 @@ struct PublicRelease: Equatable, Sendable {
     let url: URL
     let notes: String
     private let assets: [Asset]
-    static let downloads = URL(string: "https://github.com/liyunhui0707/dictionary-macos/releases")!
+    static let downloads = URL(string: "https://github.com/liyunhui0707/wordlit/releases")!
     static let endpoint = URL(string: "https://api.github.com/repos/liyunhui0707/dictionary-macos/releases/latest")!
+    static let wordlitEndpoint = URL(string: "https://api.github.com/repos/liyunhui0707/wordlit/releases/latest")!
+    private static let repositories = ["liyunhui0707/dictionary-macos", "liyunhui0707/wordlit"]
+
+    private static func trustedGitHubURL(_ url: URL, suffix: String) -> Bool {
+        url.scheme == "https" && url.host == "github.com" && url.user == nil && url.password == nil &&
+        url.port == nil && url.query == nil && url.fragment == nil &&
+        repositories.contains { url.path == "/\($0)/releases/\(suffix)" }
+    }
 
     static func decode(_ data: Data) throws -> PublicRelease {
         struct Payload: Decodable {
@@ -65,9 +73,8 @@ struct PublicRelease: Equatable, Sendable {
         guard data.count <= 262_144 else { throw ReleaseUpdateError.invalid }
         let payload = try JSONDecoder().decode(Payload.self, from: data)
         guard !payload.draft, !payload.prerelease, ReleaseVersion(payload.tag_name) != nil,
-              let url = URL(string: payload.html_url), url.scheme == "https", url.host == "github.com",
-              url.user == nil, url.password == nil, url.port == nil, url.query == nil, url.fragment == nil,
-              url.path == "/liyunhui0707/dictionary-macos/releases/tag/\(payload.tag_name)" else {
+              let url = URL(string: payload.html_url),
+              trustedGitHubURL(url, suffix: "tag/\(payload.tag_name)") else {
             throw ReleaseUpdateError.invalid
         }
         let number = payload.tag_name.hasPrefix("v") ? String(payload.tag_name.dropFirst()) : payload.tag_name
@@ -76,10 +83,8 @@ struct PublicRelease: Equatable, Sendable {
         let counts = Dictionary(grouping: candidates, by: \.name).mapValues(\.count)
         let assets = candidates.compactMap { asset -> Asset? in
             guard allowedNames.contains(asset.name), counts[asset.name] == 1, asset.size > 0,
-                  let address = URL(string: asset.browser_download_url), address.scheme == "https",
-                  address.host == "github.com", address.user == nil, address.password == nil,
-                  address.port == nil, address.query == nil, address.fragment == nil,
-                  address.path == "/liyunhui0707/dictionary-macos/releases/download/\(payload.tag_name)/\(asset.name)" else { return nil }
+                  let address = URL(string: asset.browser_download_url),
+                  trustedGitHubURL(address, suffix: "download/\(payload.tag_name)/\(asset.name)") else { return nil }
             return Asset(name: asset.name, url: address)
         }
         let body = (payload.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -89,7 +94,11 @@ struct PublicRelease: Equatable, Sendable {
 
     func installer(for architecture: ReleaseArchitecture, format: ReleaseInstallerFormat) -> Asset? {
         let number = version.hasPrefix("v") ? String(version.dropFirst()) : version
-        return assets.first { $0.name == "Dictionary-\(number)-macOS-\(architecture.rawValue).\(format.rawValue)" }
+        // Prefer the new brand, but keep every previously published artifact usable.
+        for product in ["Wordlit", "Dictionary"] {
+            if let asset = assets.first(where: { $0.name == "\(product)-\(number)-macOS-\(architecture.rawValue).\(format.rawValue)" }) { return asset }
+        }
+        return nil
     }
     var checksums: URL? { assets.first { $0.name == "SHA256SUMS" }?.url }
 
@@ -100,27 +109,42 @@ struct PublicRelease: Equatable, Sendable {
         config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 15
         let session = URLSession(configuration: config, delegate: CloudRedirectGuard(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: endpoint)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("Dictionary-macOS", forHTTPHeaderField: "User-Agent")
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let response = response as? HTTPURLResponse else { throw ReleaseUpdateError.invalid }
-        if response.statusCode == 404 { return nil }
-        guard response.statusCode == 200, response.expectedContentLength <= 262_144 else { throw ReleaseUpdateError.invalid }
-        var data = Data()
-        for try await byte in bytes {
-            guard data.count < 262_144 else { throw ReleaseUpdateError.invalid }
-            data.append(byte)
+        return try await fetch { request in
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let response = response as? HTTPURLResponse else { throw ReleaseUpdateError.invalid }
+            guard response.expectedContentLength <= 262_144 else { throw ReleaseUpdateError.invalid }
+            var data = Data()
+            for try await byte in bytes {
+                guard data.count < 262_144 else { throw ReleaseUpdateError.invalid }
+                data.append(byte)
+            }
+            return (data, response)
         }
-        return try decode(data)
+    }
+
+    /// Only the two fixed first-party endpoints may be tried. Never follow Location.
+    static func fetch(using send: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)) async throws -> PublicRelease? {
+        for address in [endpoint, wordlitEndpoint] {
+            var request = URLRequest(url: address)
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+            request.setValue("Wordlit-macOS", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await send(request)
+            if response.statusCode == 404 { continue }
+            if address == endpoint && [301, 308].contains(response.statusCode) { continue }
+            guard response.statusCode == 200 else { throw ReleaseUpdateError.invalid }
+            return try decode(data)
+        }
+        return nil
     }
 }
 
 private extension ReleaseArchitecture {
     static func allAssetNames(version: String) -> [String] {
         [Self.arm64, .x86_64].flatMap { architecture in
-            ["dmg", "zip"].map { "Dictionary-\(version)-macOS-\(architecture.rawValue).\($0)" }
+            ["Wordlit", "Dictionary"].flatMap { product in
+                ["dmg", "zip"].map { "\(product)-\(version)-macOS-\(architecture.rawValue).\($0)" }
+            }
         }
     }
 }

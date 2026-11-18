@@ -143,7 +143,7 @@ enum OllamaLookupError: LocalizedError {
         case .timedOut:
             return "Ollama 查询超时。模型加载或生成可能较慢，请检查本地服务状态后重试；未自动重复查询。"
         case .rejected(404):
-            return "Ollama 未找到当前模型或查询接口（404）。请在本地模型设置检查已安装模型与服务地址；保存模型后需重新打开 Dictionary。"
+            return "Ollama 未找到当前模型或查询接口（404）。请在本地模型设置检查已安装模型与服务地址；保存模型后需重新打开 Wordlit。"
         case .rejected(let status):
             return "Ollama 拒绝本次查询（\(status)）。请检查服务状态与当前模型后重试；未自动重复查询。"
         case .invalidResponse:

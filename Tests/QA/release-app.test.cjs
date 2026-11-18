@@ -23,7 +23,7 @@ test('public packaging omits private QA metadata and preserves resources and ver
   const {packageApp,signingOptions} = await import('../../scripts/qa-app.mjs');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'dictionary-public-package-'));
   const bin=path.join(root,'bin'); fs.mkdirSync(bin);
-  const resource=path.join(bin,'DictionaryApp_DictionaryApp.bundle/EnglishDictionary'); fs.mkdirSync(resource,{recursive:true});
+  const resource=path.join(bin,'Wordlit_DictionaryApp.bundle/EnglishDictionary'); fs.mkdirSync(resource,{recursive:true});
   fs.writeFileSync(path.join(resource,'oewn-2025.json.gz'),'synthetic dictionary');
   fs.writeFileSync(path.join(resource,'../AppIcon.icns'),'synthetic icon');
   fs.writeFileSync(path.join(resource, '../ReadingSample.html'), 'synthetic reading sample');
@@ -38,8 +38,12 @@ test('public packaging omits private QA metadata and preserves resources and ver
   const executable=path.join(bin,'DictionaryApp'); fs.writeFileSync(executable,'synthetic executable');
   const out=path.join(root,'out'); fs.mkdirSync(out);
   const app=packageApp(out,executable,{productVersion:'0.2.0',privatePath:'not for public'},()=>'',signingOptions(),false);
+  assert.equal(path.basename(app),'Wordlit.app');
+  const plist=fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8');
+  assert.match(plist,/<key>CFBundleName<\/key><string>Wordlit<\/string>/);
+  assert.match(plist,/<key>CFBundleIdentifier<\/key><string>com\.liyunhui\.DictionaryApp<\/string>/);
   assert(!fs.existsSync(path.join(app,'Contents/Resources/qa-build.json')));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(app,'Contents/Resources/BrowserExtension/manifest.json'))).name,'Dictionary Lookup');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(app,'Contents/Resources/BrowserExtension/manifest.json'))).name,'Wordlit Lookup');
   assert(fs.existsSync(path.join(app,'Contents/Resources/BrowserExtension/service-worker.js')));
   assert.match(fs.readFileSync(path.join(app,'Contents/Info.plist'),'utf8'),/<string>0\.2\.0<\/string>/);
   assert((await api).auditPublicApp(app).some(file=>file.path.endsWith('EnglishDictionary/oewn-2025.json.gz')));

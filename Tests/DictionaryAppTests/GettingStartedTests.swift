@@ -15,7 +15,7 @@ import Testing
         try Data("PRIVATE_SENTINEL".utf8).write(to: source.appendingPathComponent("token"))
         let first = try BrowserExtensionExport.prepare(source: source, parent: parent)
         #expect(first.version == "0.2.1" && !first.reused)
-        #expect(first.directory.lastPathComponent == "Dictionary Browser Extension 0.2.1")
+        #expect(first.directory.lastPathComponent == "Wordlit Browser Extension 0.2.1")
         for file in BrowserExtensionExport.files { #expect(try Data(contentsOf: first.directory.appendingPathComponent(file)) == Data(contentsOf: source.appendingPathComponent(file))) }
         #expect(!FileManager.default.fileExists(atPath: first.directory.appendingPathComponent("token").path))
         let date = try first.directory.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
@@ -71,7 +71,7 @@ import Testing
         let link = root.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
         #expect(throws: BrowserExtensionExport.Failure.self) { try BrowserExtensionExport.prepare(source: link, parent: root) }
-        let destination = root.appendingPathComponent("Dictionary Browser Extension 0.2.1")
+        let destination = root.appendingPathComponent("Wordlit Browser Extension 0.2.1")
         try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: root.appendingPathComponent("absent"))
         #expect(throws: BrowserExtensionExport.Failure.self) { try BrowserExtensionExport.prepare(source: source, parent: root) }
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("absent").path))

@@ -37,7 +37,7 @@ final class AppReadiness: ObservableObject {
 
     // Default for isolated views/tests: never probes the host's actual permissions.
     static func preview() -> AppReadiness {
-        AppReadiness(buildID: nil, appURL: URL(fileURLWithPath: "/Synthetic/Dictionary.app"),
+        AppReadiness(buildID: nil, appURL: URL(fileURLWithPath: "/Synthetic/Wordlit.app"),
             checkPermission: { false }, openPermissionSettings: { false }, revealApp: { _ in })
     }
 

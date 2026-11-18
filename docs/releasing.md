@@ -1,15 +1,19 @@
-# Release process
+# Wordlit release process
 
 The selected channel is an **ad-hoc signed, unnotarized macOS download**.
 Developer ID signing and Apple notarization remain an upgrade to distribution,
 not a requirement to buy membership before this channel can ship. Do not describe
 these artifacts as Apple-verified or bypass macOS security to test them.
 
-1. Explicitly approve a SemVer version in `VERSION`. The selected version for the current
-   delivery is 0.10.0 (Chromium extension 0.2.1), explicitly approved for the current candidate, both-Mac upgrades, PR integration and public delivery.
-   Website synchronization and deployment have also been approved for this batch.
-   Future versions and their delivery scope need their own explicit decision. App packagers read that file; companion extension versions
-   change only when their implementation/protocol requires it.
+Wordlit's brand migration follows the [brand and cutover rules](../branding/README.md).
+Existing Dictionary artifacts remain immutable. Public source, binaries, website
+and both-Mac installation each retain their own verification evidence.
+
+1. The explicitly selected delivery is Wordlit **0.11.0**, Chromium extension **0.2.2**,
+   and Obsidian plugin **0.1.1**. This batch authorizes source PR/CI/review/merge,
+   renaming the existing repository, publishing verified new artifacts, synchronizing
+   the existing website without changing its audience, and both-Mac upgrades with rollback.
+   Future releases need their own version decision; never rebuild a published version in place.
 2. Run `swift test` and `node --test Tests/QA/*.test.cjs Tests/Extensions/*.test.cjs`.
    Optional live model tests require separately authorized data, credentials and
    call limits. They are off in normal tests. Review semantic results separately.

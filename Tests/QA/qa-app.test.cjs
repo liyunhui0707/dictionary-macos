@@ -5,6 +5,19 @@ const path = require('node:path');
 const os = require('node:os');
 const api = import('../../scripts/qa-app.mjs');
 
+test('new and frozen legacy app archives resolve without ambiguity or symlink substitution', async () => {
+  const {candidateApp}=await api;
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wordlit-candidate-test-'));
+  assert.throws(()=>candidateApp(root),/unambiguous/);
+  fs.mkdirSync(path.join(root,'Dictionary.app'));
+  assert.equal(candidateApp(root),path.join(root,'Dictionary.app'));
+  fs.mkdirSync(path.join(root,'Wordlit.app'));
+  assert.throws(()=>candidateApp(root),/unambiguous/);
+  const linked=fs.mkdtempSync(path.join(os.tmpdir(),'wordlit-candidate-link-'));
+  fs.symlinkSync(path.join(root,'Wordlit.app'),path.join(linked,'Wordlit.app'));
+  assert.throws(()=>candidateApp(linked),/Unsafe/);
+});
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dictionary-qa-test-'));
   for (const p of ['Package.swift', 'README.md', '.gitignore', 'Sources/App.swift', 'Tests/Test.swift', 'scripts/build-app.sh', 'docs/audit.md']) {
@@ -53,7 +66,7 @@ test('existing output is refused without changing its contents', async () => {
 
 test('process/port conflicts and inconclusive inspection fail closed', async () => {
   const {assertLaunchSafe, parseProcesses, parseListeners} = await api;
-  assert.throws(()=>assertLaunchSafe([{pid:12,executable:'/old/Dictionary.app/Contents/MacOS/DictionaryApp'}],[]),/12/);
+  assert.throws(()=>assertLaunchSafe([{pid:12,executable:'/old/Wordlit.app/Contents/MacOS/DictionaryApp'}],[]),/12/);
   assert.throws(()=>assertLaunchSafe([],[99]),/99/);
   assert.throws(()=>parseProcesses('not a process table'),/inspect/i);
   assert.throws(()=>parseListeners({status:1,stdout:'',stderr:'permission denied'}),/inspect/i);
@@ -66,7 +79,7 @@ test('process/port conflicts and inconclusive inspection fail closed', async () 
 
 test('same name/Bundle ID cannot substitute for executable path, UUID and hash', async () => {
   const {assertIdentity} = await api;
-  const expected={executable:'/new/Dictionary.app/Contents/MacOS/DictionaryApp',bundleID:'com.liyunhui.DictionaryApp',uuid:'A',sha256:'a',signature:'adhoc'};
+  const expected={executable:'/new/Wordlit.app/Contents/MacOS/DictionaryApp',bundleID:'com.liyunhui.DictionaryApp',uuid:'A',sha256:'a',signature:'adhoc'};
   for(const field of ['executable','bundleID','uuid','sha256','signature']) {
     assert.throws(()=>assertIdentity(expected,{...expected,[field]:'different'}),/identity/i);
   }
@@ -76,7 +89,7 @@ test('same name/Bundle ID cannot substitute for executable path, UUID and hash',
 test('failed signing never writes a launchable manifest', async () => {
   const {packageApp} = await api; const root=fixture();
   const binary=path.join(root,'fake-binary');fs.writeFileSync(binary,'binary');
-  const resource=path.join(root,'DictionaryApp_DictionaryApp.bundle/Contents/Resources/EnglishDictionary');
+  const resource=path.join(root,'Wordlit_DictionaryApp.bundle/Contents/Resources/EnglishDictionary');
   fs.mkdirSync(resource,{recursive:true});fs.writeFileSync(path.join(resource,'oewn-2025.json.gz'),'synthetic-resource');
   fs.writeFileSync(path.join(resource,'../AppIcon.icns'),'synthetic-icon');
   fs.writeFileSync(path.join(resource, '../ReadingSample.html'), 'synthetic reading sample');
@@ -113,27 +126,27 @@ test('certificate signature inspection accepts codesign explicit designated requ
 test('daily entry verifies build, retains previous bundle and supports deliberate rollback', async () => {
   const {selectDailyBuild} = await api;
   const root=fs.realpathSync(fixture());
-  for(const id of ['old','new']) fs.mkdirSync(path.join(root,'build/qa.noindex',id,'Dictionary.app'),{recursive:true});
-  const daily=path.join(root,'build/Dictionary-Daily.app');
-  fs.symlinkSync('qa.noindex/old/Dictionary.app',daily);
+  for(const id of ['old','new']) fs.mkdirSync(path.join(root,'build/qa.noindex',id,'Wordlit.app'),{recursive:true});
+  const daily=path.join(root,'build/Wordlit-Daily.app');
+  fs.symlinkSync('qa.noindex/old/Wordlit.app',daily);
   const verified=[];
   const verify=out=>{verified.push(out);return {buildID:path.basename(out)};};
   const idle=()=>({processes:[],listeners:[]});
   const result=selectDailyBuild(root,path.join(root,'build/qa.noindex/new'),verify,idle);
-  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/new/Dictionary.app'));
-  assert.equal(fs.realpathSync(result.previous),path.join(root,'build/qa.noindex/old/Dictionary.app'));
-  assert(fs.existsSync(path.join(root,'build/qa.noindex/old/Dictionary.app')));
+  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/new/Wordlit.app'));
+  assert.equal(fs.realpathSync(result.previous),path.join(root,'build/qa.noindex/old/Wordlit.app'));
+  assert(fs.existsSync(path.join(root,'build/qa.noindex/old/Wordlit.app')));
   assert.equal(selectDailyBuild(root,path.join(root,'build/qa.noindex/new'),verify,idle).unchanged,true);
   selectDailyBuild(root,path.join(root,'build/qa.noindex/old'),verify,idle);
-  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/old/Dictionary.app'));
+  assert.equal(fs.realpathSync(daily),path.join(root,'build/qa.noindex/old/Wordlit.app'));
   assert.equal(verified.length,3);
 });
 
 test('daily entry refuses conflicts, invalid builds, external paths and real apps without replacement', async () => {
   const {selectDailyBuild} = await api;
   const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa.noindex/new');
-  fs.mkdirSync(path.join(out,'Dictionary.app'),{recursive:true});
-  const daily=path.join(root,'build/Dictionary-Daily.app');
+  fs.mkdirSync(path.join(out,'Wordlit.app'),{recursive:true});
+  const daily=path.join(root,'build/Wordlit-Daily.app');
   const ok=()=>({buildID:'new'}), idle=()=>({processes:[],listeners:[]});
   assert.throws(()=>selectDailyBuild(root,out,ok,()=>({processes:[{pid:42}],listeners:[]})),/blocked/i);
   assert.throws(()=>selectDailyBuild(root,out,()=>{throw Error('hash mismatch');},idle),/mismatch/);
@@ -147,15 +160,15 @@ test('daily entry refuses conflicts, invalid builds, external paths and real app
 test('first daily entry is created exclusively and external old references are preserved', async () => {
   const {selectDailyBuild} = await api;
   const root=fs.realpathSync(fixture()),out=path.join(root,'build/qa.noindex/first');
-  fs.mkdirSync(path.join(out,'Dictionary.app'),{recursive:true});
+  fs.mkdirSync(path.join(out,'Wordlit.app'),{recursive:true});
   const idle=()=>({processes:[],listeners:[]});
   const result=selectDailyBuild(root,out,()=>({buildID:'first'}),idle);
-  assert.equal(fs.realpathSync(result.entry),path.join(out,'Dictionary.app'));
+  assert.equal(fs.realpathSync(result.entry),path.join(out,'Wordlit.app'));
   assert.equal(result.previous,undefined);
   const other=fs.realpathSync(fixture()),otherOut=path.join(other,'build/qa.noindex/new');
-  fs.mkdirSync(path.join(otherOut,'Dictionary.app'),{recursive:true});
-  const entry=path.join(other,'build/Dictionary-Daily.app');
-  fs.symlinkSync('/Applications/Dictionary.app',entry);
+  fs.mkdirSync(path.join(otherOut,'Wordlit.app'),{recursive:true});
+  const entry=path.join(other,'build/Wordlit-Daily.app');
+  fs.symlinkSync('/Applications/Wordlit.app',entry);
   assert.throws(()=>selectDailyBuild(other,otherOut,()=>({buildID:'new'}),idle),/outside/);
-  assert.equal(fs.readlinkSync(entry),'/Applications/Dictionary.app');
+  assert.equal(fs.readlinkSync(entry),'/Applications/Wordlit.app');
 });

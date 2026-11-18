@@ -8,7 +8,7 @@ actor AmericanPronunciation {
 
     static var resourceURL: URL? {
         if Bundle.main.bundleURL.pathExtension == "app", let resources = Bundle.main.resourceURL {
-            for prefix in ["DictionaryApp_DictionaryApp.bundle/Contents/Resources", "DictionaryApp_DictionaryApp.bundle", ""] {
+            for prefix in ["Wordlit_DictionaryApp.bundle/Contents/Resources", "Wordlit_DictionaryApp.bundle", ""] {
                 let url = resources.appendingPathComponent(prefix).appendingPathComponent("Pronunciation/cmudict.dict")
                 if FileManager.default.fileExists(atPath: url.path) { return url }
             }
