@@ -9,6 +9,20 @@ import Testing
 struct PopupLayoutTests {
     private let source = "We sat on the bank of the river."
 
+    @Test func borderlessReadingPanelCanAcceptEditorFocusWithoutBecomingMain() {
+        _ = NSApplication.shared
+        let panel = DraggablePanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        defer { panel.close() }
+        // A borderless NSPanel otherwise refuses keyboard focus even though the
+        // hosted TextEditor is editable. Never order the test window front.
+        #expect(panel.canBecomeKey)
+        #expect(!panel.canBecomeMain)
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(!panel.isVisible && !panel.isKeyWindow)
+    }
+
     @Test func overflowingResultKeepsAnAISummaryWithoutLeakingItIntoTheNextRequest() throws {
         let request = try LookupRequest.manual(target: "bank", context: "")
         let state = PopupState()

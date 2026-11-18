@@ -13,7 +13,13 @@ final class PopupState: ObservableObject {
 /// Lets the user drag the window by clicking anywhere on the background.
 /// SwiftUI controls (buttons, text views) consume their hit-tests first, so
 /// this `mouseDown` only fires for clicks that fall through to the panel.
-private final class DraggablePanel: NSPanel {
+final class DraggablePanel: NSPanel {
+    // Borderless panels otherwise reject keyboard focus, leaving the review
+    // TextEditor visible but unable to accept input. Presenting stays nonactivating;
+    // becomesKeyOnlyIfNeeded lets an explicit editor click receive the keyboard.
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
     override func mouseDown(with event: NSEvent) {
         self.performDrag(with: event)
     }
