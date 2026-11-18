@@ -16,7 +16,7 @@ struct SupportDiagnosticsView: View {
     }
     @State private var preview: ReportSnapshot?
     @State private var preparationFailed = false
-    static let feedbackURL = URL(string: "https://github.com/liyunhui0707/dictionary-macos/issues/new?template=bug_report.yml")!
+    static let feedbackURL = URL(string: "https://github.com/liyunhui0707/wordlit/issues/new?template=bug_report.yml")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {

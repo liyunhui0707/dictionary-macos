@@ -1,8 +1,8 @@
 # Maintenance and installation
 
-Wordlit naming below applies to the prepared source migration. Existing daily
-0.10.0 installations remain `/Applications/Dictionary.app` until an explicitly
-approved upgrade. See [cutover order](../branding/README.md#public-cutover-order).
+Wordlit naming applies from 0.11.0. Keep a verified 0.10.0 Dictionary rollback
+when moving the daily entry to `/Applications/Wordlit.app`. See
+[cutover order](../branding/README.md#public-cutover-order).
 
 Maintain product source in this public repository. A new patch updates the same
 product, not a newly named daily application. Keep one daily installation at

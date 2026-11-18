@@ -44,8 +44,8 @@ Public branding is separate from existing storage and protocol identity:
 - Retain the internal `DictionaryApp` Swift module and packaged executable name.
   The Swift package/product is Wordlit; implementation namespaces are not branding.
 - Retain the Obsidian plugin ID, browser command IDs and extension storage keys.
-  Extension version numbers are unchanged for this branding-only source group;
-  a future published extension update must follow its own version policy.
+  The approved companion versions are Chromium 0.2.2 and Obsidian 0.1.1;
+  this is a branding update, with no connection-protocol change.
   An already-loaded Dictionary Lookup keeps working through the unchanged protocol;
   no reload or pairing is required just to upgrade the app. Exporting to a new
   folder can create a different Chromium extension identity, so it is not claimed
@@ -61,8 +61,8 @@ Public branding is separate from existing storage and protocol identity:
 
 ## Public cutover order
 
-This branch prepares branding; it does not declare a new release. `VERSION`
-remains 0.10.0; the current public 0.10.0 artifacts are still Dictionary.
+The approved cutover version is Wordlit 0.11.0. Release status follows GitHub
+Releases; every published 0.10.0 Dictionary artifact remains unchanged.
 
 1. Review and integrate the brand/compatibility change through the normal PR and CI.
 2. Choose the next release version explicitly; build and verify its Wordlit artifacts.
@@ -77,5 +77,5 @@ remains 0.10.0; the current public 0.10.0 artifacts are still Dictionary.
    upgrade path in the old release notes before cutover; redirects alone are insufficient.
 
 Repository rename, push/merge, website deployment and daily-app installation are
-distinct external operations. None has been performed by preparing this branch.
+distinct operations in the approved batch; their actual results are recorded separately.
 No automatic installation, model change or new permission is introduced.

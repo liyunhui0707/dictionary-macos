@@ -52,7 +52,7 @@ struct PublicRelease: Equatable, Sendable {
     let url: URL
     let notes: String
     private let assets: [Asset]
-    static let downloads = URL(string: "https://github.com/liyunhui0707/dictionary-macos/releases")!
+    static let downloads = URL(string: "https://github.com/liyunhui0707/wordlit/releases")!
     static let endpoint = URL(string: "https://api.github.com/repos/liyunhui0707/dictionary-macos/releases/latest")!
     static let wordlitEndpoint = URL(string: "https://api.github.com/repos/liyunhui0707/wordlit/releases/latest")!
     private static let repositories = ["liyunhui0707/dictionary-macos", "liyunhui0707/wordlit"]

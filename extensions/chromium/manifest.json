@@ -1,18 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Wordlit Lookup",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Send selected text + paragraph context to the Wordlit macOS app for context-aware translation.",
-  "permissions": ["activeTab", "scripting", "storage", "notifications"],
-  "host_permissions": ["http://127.0.0.1:49152/*"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:49152/*"
+  ],
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -35,12 +46,12 @@
     "128": "icons/128.png"
   },
   "action": {
-      "default_title": "Wordlit：查词与连接检查",
-      "default_popup": "options.html",
-      "default_icon": {
-          "16": "icons/16.png",
-          "48": "icons/48.png",
-          "128": "icons/128.png"
-      }
+    "default_title": "Wordlit：查词与连接检查",
+    "default_popup": "options.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
   }
 }
